@@ -527,12 +527,6 @@ struct ExplorationMapView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 4)
 
-            Text("Your exploration density has increased by 14% this week in the central hub.")
-                .font(.custom("Inter-Medium", size: 14))
-                .foregroundColor(Color.dsOnSurfaceVariant)
-                .lineSpacing(5)
-                .fixedSize(horizontal: false, vertical: true)
-
             HStack(alignment: .bottom, spacing: 32) {
                 statColumn(label: "Distance",
                            value: String(format: "%.1f", distanceUnit.converted(totalDistanceKm)),

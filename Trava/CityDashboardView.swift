@@ -40,12 +40,6 @@ struct CityDashboardView: View {
 
     private let renderer = CitySnapshotRenderer()
 
-    // Bar chart data: (primaryOpacity, heightFraction)
-    private let chartBars: [(Double, Double)] = [
-        (0.20, 0.20), (0.40, 0.35), (0.60, 0.55), (1.00, 0.85),
-        (0.70, 0.60), (0.30, 0.25), (0.50, 0.45)
-    ]
-
     private var effectiveCity: City? { city ?? cityService.cities.first }
 
     var body: some View {
@@ -59,28 +53,12 @@ struct CityDashboardView: View {
 
                 // ── Bento grid (gap-6 = 24pt stacked) ──────────
                 VStack(spacing: 24) {
-                    featuredCityCard
+                    if effectiveCity != nil {
+                        featuredCityCard
+                    }
                     statsCard
-                    cityCard(
-                        name: "San Francisco",
-                        percent: 45,
-                        url: "https://lh3.googleusercontent.com/aida-public/AB6AXuCeqiPK2x2RSeR6aBhC5feEOmAzsToEsr9snmN0uepfpsbTYQbelD37DtxmVBAPfhbeWsiOPR-RN1MBiR951aUikZJu0FdTXYUSJIB21R9wECxC_UgT0fWU05TL9ONmuBBbFHzF0cdeiLRdQWalKQSbtIbPDHKerlciwNlK_UjLDBsqJPDqXX-2ntWLzU3ipjBpWWg9fICf3Aad1T8WNqkeRrLK1i-3mHlfLrrpYES2WPZ4XP6KRR-C9U5l0PmUNANAHDMFoDMFqHfT"
-                    )
-                    cityCard(
-                        name: "Berlin",
-                        percent: 62,
-                        url: "https://lh3.googleusercontent.com/aida-public/AB6AXuDN2QxvjQSXj-nOMFVFcHZxBsS8EwVHXMOT5n6_Jgt-uL0bo0YO7tX8MhIc2I98gROTl05PQ70wnm_zYLhWOFUFFy8ubwauZyFTvmqOtPMQYJDEebjYZoxUSX13z8acIO3FdYG1fBn-Sv4jqTXsZNrEcKgHl2f2t7cExc1_ekwIVbFK7O_XJQtdIYkeJr1H3BzYgiD_Zjo-wLNv-3H1PJVXkUyDxs5q5sveUmI-SQkUJmZ9F7zhzn2pvg0GkZrnngBiKNUBXoXt9iBP"
-                    )
                     expandNetworkCard
                 }
-
-                // ── Secondary section (mt-24 = 96pt) ───────────
-                VStack(alignment: .leading, spacing: 0) {
-                    recentDiscoverySection
-                        .padding(.bottom, 64)
-                    precisionHeatmapSection
-                }
-                .padding(.top, 96)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 24)   // px-6
@@ -400,80 +378,6 @@ struct CityDashboardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    // MARK: - City Photo Card (SF / Berlin)
-    // h-[300px] rounded-xl(12), grayscale image, p-6(24) flex justify-between
-
-    private func cityCard(name: String, percent: Int, url: String) -> some View {
-        ZStack(alignment: .bottom) {
-            // Grayscale photo — grayscale class in HTML
-            AsyncImage(url: URL(string: url)) { phase in
-                if case .success(let img) = phase {
-                    img.resizable().scaledToFill().grayscale(1)
-                } else {
-                    Color.dsSurfaceContainerLow
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
-
-            // bg-surface-container-lowest/40 overlay
-            Color.dsSurfaceContainerLowest.opacity(0.4)
-
-            // p-6 flex flex-col justify-between
-            VStack(spacing: 0) {
-                // Top-right: open_in_new button
-                // w-10(40) h-10(40) rounded-full bg-surface-container-high/80
-                HStack {
-                    Spacer()
-                    Button(action: {}) {
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 16))
-                            .foregroundColor(Color.dsPrimary)
-                            .frame(width: 40, height: 40)
-                            .background(Color.dsSurfaceContainerHigh.opacity(0.8))
-                            .clipShape(Circle())
-                    }
-                }
-
-                Spacer()
-
-                // Bottom: city name + progress bar
-                VStack(alignment: .leading, spacing: 8) {
-                    // h2: text-2xl(24) font-bold text-white mb-2(8)
-                    Text(name)
-                        .font(.custom("PlusJakartaSans-Bold", size: 24))
-                        .foregroundColor(.white)
-                        .padding(.bottom, 0)
-
-                    // flex items-center gap-4(16): progress bar + percentage
-                    HStack(spacing: 16) {
-                        // flex-1 h-0.5(2px) bg-white/20
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                Rectangle()
-                                    .fill(Color.white.opacity(0.2))
-                                    .frame(height: 2)
-                                Rectangle()
-                                    .fill(Color.dsPrimary)
-                                    .frame(width: geo.size.width * (Double(percent) / 100.0), height: 2)
-                            }
-                        }
-                        .frame(height: 2)
-
-                        // font-label text-primary font-bold
-                        Text("\(percent)%")
-                            .font(.custom("Inter-Bold", size: 14))
-                            .foregroundColor(Color.dsPrimary)
-                    }
-                }
-            }
-            .padding(24)    // p-6
-        }
-        .frame(height: 300)     // h-[300px]
-        .background(Color.dsSurfaceContainerLow)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
     // MARK: - Expand Network Card
     // border-2 border-dashed border-outline-variant/30 rounded-xl p-8(32) h-[300px]
 
@@ -516,114 +420,6 @@ struct CityDashboardView: View {
         .onTapGesture { showAddCity = true }
     }
 
-    // MARK: - Recent Discovery
-    // space-y-6(24), h2: text-3xl(30) font-bold tracking-tight
-    // card: p-6(24) rounded-xl(12) bg-surface-container-low flex gap-6(24)
-
-    private var recentDiscoverySection: some View {
-        VStack(alignment: .leading, spacing: 24) {   // space-y-6
-            Text("Recent Discovery")
-                .font(.custom("PlusJakartaSans-Bold", size: 30))    // text-3xl
-                .foregroundColor(Color.dsOnSurface)
-                .tracking(-0.75)    // tracking-tight: -0.025em × 30 = -0.75
-
-            HStack(alignment: .center, spacing: 24) {   // gap-6
-                // w-20(80) h-20(80) rounded-lg(8)
-                AsyncImage(url: URL(string: "https://lh3.googleusercontent.com/aida-public/AB6AXuABAX9i36rUatgn14aR4Z3DDSDnUZAT7dSrQf725DBIedghLy5UydrVxGcTLHOywNH1Ticdgkxk05jgdq8MNiMzFo3Vf3qXYQGmdzE5M7HRSVv3QkzOZsbdVQPaGvOX4v5u9LSvzluflt6pZK02dzU3x4A4_miQX51ep0I_sQ0lZPndqAme9sIjGW0hVVH7gwQO2m1XNFfw0AgP2OpWMkdXCr-1TzvDccq8wR4QKS-QknZbWIy6XTWe9d0S2javjHgCGBRxf0t7QXnj")) { phase in
-                    if case .success(let img) = phase {
-                        img.resizable().scaledToFill()
-                    } else {
-                        Color.dsSurfaceContainerHigh
-                    }
-                }
-                .frame(width: 80, height: 80)
-                .clipShape(RoundedRectangle(cornerRadius: 8))   // rounded-lg
-
-                VStack(alignment: .leading, spacing: 0) {
-                    // text-[10px] uppercase tracking-widest text-primary font-bold mb-1(4)
-                    Text("Architecture Spot")
-                        .font(.custom("Inter-Bold", size: 10))
-                        .foregroundColor(Color.dsPrimary)
-                        .kerning(1.0)
-                        .textCase(.uppercase)
-                        .padding(.bottom, 4)
-
-                    // font-headline font-bold (16pt default)
-                    Text("The Barbican Estate")
-                        .font(.custom("PlusJakartaSans-Bold", size: 16))
-                        .foregroundColor(Color.dsOnSurface)
-
-                    // text-sm(14) text-on-surface-variant
-                    Text("London, UK • Added 2h ago")
-                        .font(.custom("Inter-Regular", size: 14))
-                        .foregroundColor(Color.dsOnSurfaceVariant)
-                        .padding(.top, 2)
-                }
-
-                Spacer()
-            }
-            .padding(24)    // p-6
-            .background(Color.dsSurfaceContainerLow)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-        }
-    }
-
-    // MARK: - Precision Heatmap
-    // bg-surface-container-lowest(#0e0e0e) p-8(32) rounded-xl(12) overflow-hidden
-
-    private var precisionHeatmapSection: some View {
-        ZStack(alignment: .topTrailing) {
-            // Decorative blur: absolute top-0 right-0 w-32(128) h-32(128) bg-secondary/5 -mr-16 -mt-16 blur-3xl
-            Circle()
-                .fill(Color.dsSecondary.opacity(0.05))
-                .frame(width: 128, height: 128)
-                .blur(radius: 40)
-                .offset(x: 64, y: -64)
-
-            VStack(alignment: .leading, spacing: 0) {
-                // h2: text-3xl(30) font-bold tracking-tight mb-4(16)
-                Text("Precision Heatmap")
-                    .font(.custom("PlusJakartaSans-Bold", size: 30))
-                    .foregroundColor(Color.dsOnSurface)
-                    .tracking(-0.75)
-                    .padding(.bottom, 16)   // mb-4
-
-                // p: font-label text-on-surface-variant mb-6(24)
-                Text("Your exploration activity peaked in Tokyo District 3 last week. 14 new structures identified.")
-                    .font(.custom("Inter-Regular", size: 12))
-                    .foregroundColor(Color.dsOnSurfaceVariant)
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.bottom, 24)   // mb-6
-
-                // Bar chart: h-32(128) bg-surface-container-high(#2a2a2a) rounded-lg(8)
-                // flex items-end gap-1(4) px-4(16) py-2(8)
-                // Inner drawable height = 128 - 16 = 112pt
-                HStack(alignment: .bottom, spacing: 4) {
-                    ForEach(0..<chartBars.count, id: \.self) { i in
-                        UnevenRoundedRectangle(
-                            topLeadingRadius: 2,
-                            bottomLeadingRadius: 0,
-                            bottomTrailingRadius: 0,
-                            topTrailingRadius: 2
-                        )
-                        .fill(Color.dsPrimary.opacity(chartBars[i].0))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .frame(height: 112 * chartBars[i].1)
-                    }
-                }
-                .padding(.horizontal, 16)   // px-4
-                .padding(.vertical, 8)      // py-2
-                .frame(height: 128)         // h-32
-                .background(Color.dsSurfaceContainerHigh)
-                .clipShape(RoundedRectangle(cornerRadius: 8))   // rounded-lg
-            }
-        }
-        .padding(32)    // p-8
-        .background(Color.dsSurfaceContainerLowest)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .clipped()
-    }
 }
 
 // MARK: - Activity Sheet
