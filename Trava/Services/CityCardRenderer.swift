@@ -206,7 +206,7 @@ enum CityCardRenderer {
 
     // MARK: - Helpers
 
-    private static func makeRenderer(size: CGSize, scale: CGFloat) -> UIGraphicsImageRenderer {
+    nonisolated private static func makeRenderer(size: CGSize, scale: CGFloat) -> UIGraphicsImageRenderer {
         let fmt = UIGraphicsImageRendererFormat()
         fmt.scale  = scale
         fmt.opaque = true

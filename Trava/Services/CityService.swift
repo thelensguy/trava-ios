@@ -421,10 +421,8 @@ final class CityService: ObservableObject {
             let coord = CLLocationCoordinate2D(latitude: c.latitude, longitude: c.longitude)
             guard let item = await reverseGeocode(coordinate: coord) else { continue }
             let city    = item.addressRepresentations?.cityName
-                        ?? item.placemark.locality
                         ?? fallbackCityName
             let country = item.addressRepresentations?.regionName
-                        ?? item.placemark.country
                         ?? "Unknown"
             guard city != "Unknown City", !city.isEmpty else { continue }
             results.append(GeoSample(coordIndex: idx, cityName: city, country: country))
