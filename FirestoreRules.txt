@@ -1,0 +1,93 @@
+// FirestoreRules.txt
+// Trava — Firestore Security Rules
+//
+// How to deploy:
+//   1. Go to Firebase Console → Firestore Database → Rules tab
+//   2. Replace the existing rules with the block below
+//   3. Click "Publish"
+//
+// Or via Firebase CLI:
+//   firebase deploy --only firestore:rules
+//
+// ─────────────────────────────────────────────────────────────────────────
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ──────────────────────────────────────────────────
+
+    // True if the request comes from a signed-in user.
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // True if the signed-in user owns the document being accessed.
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // ── User profiles ─────────────────────────────────────────────────────
+    //
+    // users/{userId}
+    //   • Owner: full read + write
+    //   • Any authenticated user: may read ONLY the displayName field
+    //     (used for social features — leaderboards, snapshot attribution)
+
+    match /users/{userId} {
+      // Full document: owner only
+      allow read, write: if isOwner(userId);
+
+      // displayName field only: any signed-in user (GET, not list)
+      allow get: if isSignedIn()
+                 && request.auth.uid != userId;
+    }
+
+    // ── Private tracks ────────────────────────────────────────────────────
+    //
+    // users/{userId}/tracks/{trackId}
+    //   • Owner: full read + write
+    //   • Others: no access
+
+    match /users/{userId}/tracks/{trackId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // ── Private city records ──────────────────────────────────────────────
+    //
+    // users/{userId}/cities/{cityId}
+    //   • Owner: full read + write
+    //   • Others: no access
+
+    match /users/{userId}/cities/{cityId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // ── Public snapshots (social phase) ──────────────────────────────────
+    //
+    // public/snapshots/{snapshotId}
+    //   • Any authenticated user: read
+    //   • Snapshot owner (userId field matches auth.uid): create + delete
+    //   • Like count updates: any authenticated user may increment likeCount
+    //     by exactly 1 (enforced by the write rule below)
+
+    match /public/snapshots/{snapshotId} {
+      // Anyone signed in can read snapshots
+      allow read: if isSignedIn();
+
+      // Owner creates / deletes their own snapshots
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn()
+                    && resource.data.userId == request.auth.uid;
+
+      // Any signed-in user may update ONLY the likeCount field,
+      // and only by incrementing it by exactly 1.
+      allow update: if isSignedIn()
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['likeCount'])
+                    && request.resource.data.likeCount
+                         == resource.data.likeCount + 1;
+    }
+  }
+}
