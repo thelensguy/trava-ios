@@ -209,28 +209,28 @@ enum DistanceUnit: String, CaseIterable {
 // MARK: - Navigation
 
 enum AppTab: Int, CaseIterable {
-    case dashboard, exploration, settings
+    case exploration, dashboard, settings
 
     var title: String {
         switch self {
-        case .dashboard:   return "Dashboard"
-        case .exploration: return "Exploration"
+        case .exploration: return "Map"
+        case .dashboard:   return "Cities"
         case .settings:    return "Settings"
         }
     }
 
     var icon: String {
         switch self {
-        case .dashboard:   return "square.grid.2x2"
         case .exploration: return "map"
+        case .dashboard:   return "building.2"
         case .settings:    return "gearshape"
         }
     }
 
     var activeIcon: String {
         switch self {
-        case .dashboard:   return "square.grid.2x2.fill"
         case .exploration: return "map.fill"
+        case .dashboard:   return "building.2.fill"
         case .settings:    return "gearshape.fill"
         }
     }
@@ -289,14 +289,22 @@ struct DSTabBar: View {
 // HTML: bg-[#131313] px-6 h-16, justify-between, title centered, all #adc6ff
 
 struct DSNavBar: View {
+    var trailing: AnyView = AnyView(EmptyView())
 
     var body: some View {
         HStack(spacing: 0) {
+            // Leading placeholder to keep title centered
+            Color.clear
+                .frame(width: 40, height: 40)
+
             Text("TRAVA")
                 .font(.custom("PlusJakartaSans-ExtraBold", size: 18))
                 .foregroundColor(Color.dsPrimary)
                 .kerning(1.8)
                 .frame(maxWidth: .infinity)
+
+            trailing
+                .frame(width: 40, height: 40)
         }
         .padding(.horizontal, 24)  // px-6
         .frame(height: 64)         // h-16

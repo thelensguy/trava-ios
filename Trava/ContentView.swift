@@ -4,8 +4,11 @@
 import SwiftUI
 
 struct ContentView: View {
-    @EnvironmentObject var auth: AuthViewModel
+    @EnvironmentObject var auth:        AuthViewModel
+    @EnvironmentObject var cityService:  CityService
+    @EnvironmentObject var trackService: TrackService
     @State private var selectedTab: AppTab = .exploration
+    @State private var showCitiesImport = false
 
     var body: some View {
         Group {
@@ -22,17 +25,15 @@ struct ContentView: View {
 
     // MARK: - Persistent shell
 
-    /// All three tab views live simultaneously in a ZStack (mirroring
-    /// UITabBarController). Only opacity + hit-testing change on tab switch,
-    /// so DSNavBar and DSTabBar never remount and state is preserved
-    /// (e.g. an active recording is not interrupted when the user browses
-    /// to the dashboard and comes back).
     private var mainShell: some View {
         ZStack {
-            // Tab content — all always alive, only the active one is visible
-            CityDashboardView(selectedTab: $selectedTab)
-                .opacity(selectedTab == .dashboard   ? 1 : 0)
-                .allowsHitTesting(selectedTab == .dashboard)
+            // Cities tab — wrapped in NavigationStack for city detail push
+            NavigationStack {
+                AddManageCityView(selectedTab: $selectedTab)
+                    .toolbarVisibility(.hidden, for: .navigationBar)
+            }
+            .opacity(selectedTab == .dashboard   ? 1 : 0)
+            .allowsHitTesting(selectedTab == .dashboard)
 
             ExplorationMapView(selectedTab: $selectedTab)
                 .opacity(selectedTab == .exploration ? 1 : 0)
@@ -43,10 +44,26 @@ struct ContentView: View {
                 .allowsHitTesting(selectedTab == .settings)
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            DSNavBar()
+            DSNavBar(trailing: selectedTab == .dashboard ? AnyView(importButton) : AnyView(EmptyView()))
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             DSTabBar(selectedTab: $selectedTab)
+        }
+        .sheet(isPresented: $showCitiesImport) {
+            ImportView()
+                .environmentObject(trackService)
+                .environmentObject(cityService)
+                .environmentObject(auth)
+        }
+    }
+
+    private var importButton: some View {
+        Button {
+            showCitiesImport = true
+        } label: {
+            Image(systemName: "square.and.arrow.down")
+                .font(.system(size: 17, weight: .medium))
+                .foregroundColor(Color.dsPrimary)
         }
     }
 }

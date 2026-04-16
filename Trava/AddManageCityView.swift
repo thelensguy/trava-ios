@@ -1,9 +1,9 @@
 //  AddManageCityView.swift
 //  Trava
 //
-//  City list screen: stats header, filter search, real city cards
-//  with MKMapSnapshotter thumbnails, empty state, and NavigationLinks
-//  to CityDashboardView.
+//  Cities list screen: stats header, search filter, city cards with
+//  OSM boundary thumbnails, NavigationLinks to CityDashboardView,
+//  and empty state. Hosted inside ContentView's NavigationStack.
 
 import SwiftUI
 
@@ -15,8 +15,7 @@ struct AddManageCityView: View {
     @AppStorage(DistanceUnit.storageKey) private var distanceUnitRaw: String = DistanceUnit.km.rawValue
     private var distanceUnit: DistanceUnit { DistanceUnit(rawValue: distanceUnitRaw) ?? .km }
 
-    @State private var searchText  = ""
-    @State private var showImport  = false
+    @State private var searchText = ""
 
     private var filteredCities: [City] {
         guard !searchText.isEmpty else { return cityService.cities }
@@ -35,53 +34,35 @@ struct AddManageCityView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack(alignment: .top) {
-                Color(hex: "#131313").ignoresSafeArea()
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
 
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Spacer().frame(height: 80)   // clears fixed nav
+                // Stats row
+                statsHeader
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 24)
+                    .padding(.top, 24)
 
-                        // Stats header
-                        statsHeader
-                            .padding(.horizontal, 24)
-                            .padding(.bottom, 24)
+                // Search / filter
+                filterBar
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 24)
 
-                        // Search / filter
-                        filterBar
-                            .padding(.horizontal, 24)
-                            .padding(.bottom, 24)
-
-                        // Cities or empty state
-                        if cityService.cities.isEmpty {
-                            emptyState
-                                .padding(.horizontal, 24)
-                        } else {
-                            citiesSection
-                                .padding(.horizontal, 24)
-                        }
-                    }
-                    .padding(.bottom, 32)
+                // Cities or empty state
+                if cityService.cities.isEmpty {
+                    emptyState
+                        .padding(.horizontal, 24)
+                } else {
+                    citiesSection
+                        .padding(.horizontal, 24)
                 }
-
-                DSNavBar()
-                    .background(Color(hex: "#131313").ignoresSafeArea(edges: .top))
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                DSTabBar(selectedTab: $selectedTab)
-            }
-            .preferredColorScheme(.dark)
-            .sheet(isPresented: $showImport) {
-                ImportView()
-                    .environmentObject(trackService)
-                    .environmentObject(cityService)
-                    .environmentObject(auth)
-            }
-            .onAppear {
-                if let userId = auth.currentUserId {
-                    Task { await cityService.refresh(userId: userId) }
-                }
+            .padding(.bottom, 32)
+        }
+        .background(Color.dsBackground.ignoresSafeArea())
+        .onAppear {
+            if let userId = auth.currentUserId {
+                Task { await cityService.refresh(userId: userId) }
             }
         }
     }
@@ -160,23 +141,9 @@ struct AddManageCityView: View {
                     .font(.custom("PlusJakartaSans-Bold", size: 20))
                     .foregroundColor(Color.dsOnSurface)
                 Spacer()
-                Button { showImport = true } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "square.and.arrow.down")
-                            .font(.system(size: 12, weight: .semibold))
-                        Text("Import")
-                            .font(.custom("Inter-SemiBold", size: 12))
-                    }
-                    .foregroundColor(.dsPrimary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.dsPrimary.opacity(0.12))
-                    .clipShape(Capsule())
-                }
                 Text("\(filteredCities.count)")
                     .font(.custom("Inter-Regular", size: 12))
                     .foregroundColor(Color.dsOnSurfaceVariant)
-                    .padding(.leading, 8)
             }
 
             if filteredCities.isEmpty && !searchText.isEmpty {
@@ -187,12 +154,7 @@ struct AddManageCityView: View {
                     .padding(.vertical, 24)
             } else {
                 ForEach(filteredCities) { city in
-                    NavigationLink(
-                        destination: CityDashboardView(
-                            selectedTab: $selectedTab,
-                            city: city
-                        )
-                    ) {
+                    NavigationLink(destination: CityDetailView(city: city)) {
                         CityRowView(city: city)
                     }
                     .buttonStyle(.plain)
@@ -222,7 +184,7 @@ struct AddManageCityView: View {
     }
 }
 
-// MARK: - City Row with Map Snapshot
+// MARK: - City Row with OSM Boundary Thumbnail
 
 struct CityRowView: View {
     let city: City
@@ -284,8 +246,13 @@ struct CityRowView: View {
 }
 
 #Preview {
-    AddManageCityView(selectedTab: .constant(.exploration))
-        .environmentObject(CityService())
-        .environmentObject(TrackService())
-        .environmentObject(AuthViewModel())
+    NavigationStack {
+        AddManageCityView(selectedTab: .constant(.dashboard))
+            .environmentObject(CityService())
+            .environmentObject(TrackService())
+            .environmentObject(AuthViewModel())
+    }
+    .safeAreaInset(edge: .top,    spacing: 0) { DSNavBar() }
+    .safeAreaInset(edge: .bottom, spacing: 0) { DSTabBar(selectedTab: .constant(.dashboard)) }
+    .preferredColorScheme(.dark)
 }
