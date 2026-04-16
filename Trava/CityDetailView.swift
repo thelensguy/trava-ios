@@ -55,9 +55,19 @@ struct CityDetailView: View {
         }
     }
 
-    // MARK: - Hero (full width, 40% screen height)
+    // MARK: - Hero (full width, 40% screen height via GeometryReader)
 
     private var heroSection: some View {
+        GeometryReader { proxy in
+            heroContent(width: proxy.size.width)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: (UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.screen.bounds.height ?? 844) * 0.40)
+    }
+
+    private func heroContent(width: CGFloat) -> some View {
         ZStack(alignment: .bottom) {
             // City boundary image
             Group {
@@ -98,14 +108,15 @@ struct CityDetailView: View {
                     .font(.custom("PlusJakartaSans-Bold", size: 32))
                     .foregroundColor(.white)
                     .shadow(color: .black.opacity(0.4), radius: 4, x: 0, y: 2)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(24)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 24)
+            .padding(.top, 16)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: (UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }.first?.screen.bounds.height
-            ?? 844) * 0.40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Back button — top-left
         .overlay(alignment: .topLeading) {
             Button { dismiss() } label: {
@@ -143,25 +154,19 @@ struct CityDetailView: View {
         .padding(.bottom, 32)
     }
 
-    // MARK: - Stats Row
+    // MARK: - Stats Row (3 equal columns via LazyVGrid)
+
+    private let statsColumns = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 0),
+    ]
 
     private var statsRow: some View {
-        HStack(spacing: 12) {
-            statChip(
-                value: distanceUnit.format(city.totalDistanceKm),
-                label: "Distance",
-                icon:  "figure.walk"
-            )
-            statChip(
-                value: "\(city.totalSessions)",
-                label: "Sessions",
-                icon:  "stopwatch"
-            )
-            statChip(
-                value: "\(coveragePercent)%",
-                label: "Coverage",
-                icon:  "map"
-            )
+        LazyVGrid(columns: statsColumns, spacing: 12) {
+            statChip(value: distanceUnit.format(city.totalDistanceKm), label: "Distance", icon: "figure.walk")
+            statChip(value: "\(city.totalSessions)",                   label: "Sessions", icon: "stopwatch")
+            statChip(value: "\(coveragePercent)%",                     label: "Coverage", icon: "map")
         }
     }
 
