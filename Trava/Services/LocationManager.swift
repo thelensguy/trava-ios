@@ -243,7 +243,27 @@ final class LocationManager: NSObject, ObservableObject {
     private func closePassiveTrack() {
         passiveGapWorkItem?.cancel()
         passiveGapWorkItem = nil
-        guard !passiveSessionPoints.isEmpty else { return }
+
+        // Need at least 2 points to form a valid track.
+        guard passiveSessionPoints.count >= 2 else {
+            passiveSessionPoints = []
+            lastPassivePointTime = nil
+            currentSessionPoints = []
+            return
+        }
+
+        // Calculate distance before committing — filter GPS noise / ghost tracks.
+        var totalMeters = 0.0
+        for i in 1..<passiveSessionPoints.count {
+            totalMeters += passiveSessionPoints[i].distance(from: passiveSessionPoints[i - 1])
+        }
+        guard totalMeters / 1000.0 > 0.01 else {
+            passiveSessionPoints = []
+            lastPassivePointTime = nil
+            currentSessionPoints = []
+            return
+        }
+
         pendingPassiveTrack  = passiveSessionPoints
         passiveSessionPoints = []
         lastPassivePointTime = nil

@@ -74,6 +74,16 @@ final class CityService: ObservableObject {
         }
     }
 
+    // MARK: - Local state reset
+
+    /// Immediately clears the published city list and the write-through cache.
+    /// Call this directly after wiping CoreData so the UI reflects an empty state
+    /// without waiting for the async notification chain.
+    func clearLocalState() {
+        cities = []
+        writeQueue.async { [weak self] in self?.cityCache = [:] }
+    }
+
     // MARK: - Cache warm-up
 
     /// Populates cityCache from CoreData.  Call this once on launch BEFORE any

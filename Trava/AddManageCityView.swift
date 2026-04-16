@@ -65,6 +65,13 @@ struct AddManageCityView: View {
                 Task { await cityService.refresh(userId: userId) }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("AppDataCleared"))) { _ in
+            // Store was wiped — reload from CoreData (returns empty) so stats and
+            // the city list immediately reflect the cleared state.
+            if let userId = auth.currentUserId {
+                Task { await cityService.refresh(userId: userId) }
+            }
+        }
     }
 
     // MARK: - Stats Header

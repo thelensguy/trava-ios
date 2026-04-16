@@ -9,9 +9,10 @@ import CoreData
 
 struct SettingsView: View {
     @Binding var selectedTab: AppTab
-    @EnvironmentObject var auth: AuthViewModel
+    @EnvironmentObject var auth:            AuthViewModel
     @EnvironmentObject var locationManager: LocationManager
-    @EnvironmentObject var trackService: TrackService
+    @EnvironmentObject var trackService:    TrackService
+    @EnvironmentObject var cityService:     CityService
 
     // MARK: Tracking preferences
     @AppStorage("trava.trackingPrecision") private var precisionRaw: String  = TrackingPrecision.balanced.rawValue
@@ -453,19 +454,49 @@ struct SettingsView: View {
     }
 
     private func clearAllData() {
-        // 1. Destroy and recreate the persistent store (clears data + WAL files).
-        //    This also posts PersistenceControllerDidReset, which triggers
-        //    TrackService, CityService, and LocationManager to clear their caches.
-        PersistenceController.shared.resetStore()
+        Task { @MainActor in
+            let ctx = PersistenceController.shared.container.viewContext
 
-        // 2. Reset in-memory profile counters (no Firestore write).
-        auth.resetLocalStats()
+            // 1. Batch-delete every entity type before resetting the store.
+            //    Belt-and-suspenders: guarantees rows are gone even if resetStore
+            //    hits a race on the WAL journal.
+            for entityName in ["TrackEntity", "CityEntity", "CityBoundaryEntity"] {
+                let fetchReq = NSFetchRequest<NSFetchRequestResult>(entityName: entityName)
+                let deleteReq = NSBatchDeleteRequest(fetchRequest: fetchReq)
+                deleteReq.resultType = .resultTypeObjectIDs
+                if let result  = try? ctx.execute(deleteReq) as? NSBatchDeleteResult,
+                   let deleted = result.result as? [NSManagedObjectID], !deleted.isEmpty {
+                    NSManagedObjectContext.mergeChanges(
+                        fromRemoteContextSave: [NSDeletedObjectsKey: deleted],
+                        into: [ctx]
+                    )
+                }
+            }
+            try? ctx.save()
 
-        // 3. Reset this view's local stat counter.
-        totalTracks = 0
+            // 2. Destroy + recreate the SQLite store (clears WAL / SHM files too).
+            PersistenceController.shared.resetStore()
 
-        // 4. Confirm success.
-        showClearSuccess = true
+            // 3. Reset ALL in-memory state directly — don't rely on the async
+            //    notification chain which defers work via Task and can race with
+            //    the success alert being dismissed.
+            cityService.clearLocalState()
+            trackService.localTracks              = []
+            locationManager.currentSessionPoints  = []
+            auth.resetLocalStats()
+
+            // 4. Reset this view's stat counter.
+            totalTracks = 0
+
+            // 5. Tell living views (Cities list, Exploration map) to force-refresh
+            //    to empty state.
+            NotificationCenter.default.post(
+                name: Notification.Name("AppDataCleared"), object: nil
+            )
+
+            // 6. Show success only after all of the above completes.
+            showClearSuccess = true
+        }
     }
 }
 
@@ -474,5 +505,6 @@ struct SettingsView: View {
         .environmentObject(AuthViewModel())
         .environmentObject(LocationManager())
         .environmentObject(TrackService())
+        .environmentObject(CityService())
         .preferredColorScheme(.dark)
 }

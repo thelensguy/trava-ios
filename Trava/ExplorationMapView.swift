@@ -367,6 +367,11 @@ struct ExplorationMapView: View {
         .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
             refreshTracks()
         }
+        // After "Clear all local data" completes, reload from CoreData (returns empty)
+        // so the heatmap and polylines are immediately removed from the map.
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("AppDataCleared"))) { _ in
+            refreshTracks()
+        }
     }
 
     // MARK: - Top Controls (space-y-4 = 16pt)
@@ -671,7 +676,7 @@ struct ExplorationMapView: View {
             let track       = ExplorationTrack(
                 userId:      userId,
                 coordinates: coordinates,
-                startedAt:   recordingStartTime ?? Date(),
+                startedAt:   locations.first?.timestamp ?? recordingStartTime ?? Date(),
                 endedAt:     Date(),
                 distanceKm:  ExplorationTrack.distance(from: locations),
                 cityName:    city

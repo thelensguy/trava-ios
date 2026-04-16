@@ -48,7 +48,7 @@ struct TravaApp: App {
                     userId:      userId,
                     coordinates: coordinates,
                     startedAt:   pts.first?.timestamp ?? Date(),
-                    endedAt:     pts.last?.timestamp,
+                    endedAt:     Date(),   // time segment officially closed, not last GPS point
                     distanceKm:  ExplorationTrack.distance(from: pts),
                     cityName:    cityName
                 )

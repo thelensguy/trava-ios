@@ -233,15 +233,17 @@ struct CityDetailView: View {
     }
 
     private func trackRow(_ track: ExplorationTrack) -> some View {
-        HStack(spacing: 14) {
+        let incomplete = isIncomplete(track)
+
+        return HStack(spacing: 14) {
             // Date badge
             VStack(spacing: 1) {
                 Text(track.startedAt, format: .dateTime.day())
                     .font(.custom("PlusJakartaSans-Bold", size: 20))
-                    .foregroundColor(Color.dsOnSurface)
+                    .foregroundColor(incomplete ? Color.dsOnSurfaceVariant.opacity(0.5) : Color.dsOnSurface)
                 Text(track.startedAt, format: .dateTime.month(.abbreviated))
                     .font(.custom("Inter-Regular", size: 10))
-                    .foregroundColor(Color.dsOnSurfaceVariant)
+                    .foregroundColor(Color.dsOnSurfaceVariant.opacity(incomplete ? 0.4 : 1))
                     .textCase(.uppercase)
                     .kerning(0.5)
             }
@@ -250,14 +252,21 @@ struct CityDetailView: View {
             .background(Color.dsSurfaceContainerHighest)
             .clipShape(RoundedRectangle(cornerRadius: DS.Radius.sm))
 
-            // Distance + duration
-            VStack(alignment: .leading, spacing: 3) {
-                Text(distanceUnit.format(track.distanceKm))
-                    .font(.custom("PlusJakartaSans-Bold", size: 15))
-                    .foregroundColor(Color.dsOnSurface)
-                Text(durationLabel(for: track))
-                    .font(.custom("Inter-Regular", size: 12))
-                    .foregroundColor(Color.dsOnSurfaceVariant)
+            if incomplete {
+                Text("Incomplete")
+                    .font(.custom("Inter-Regular", size: 13))
+                    .foregroundColor(Color.dsOnSurfaceVariant.opacity(0.45))
+                    .italic()
+            } else {
+                // Distance + duration
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(distanceUnit.format(track.distanceKm))
+                        .font(.custom("PlusJakartaSans-Bold", size: 15))
+                        .foregroundColor(Color.dsOnSurface)
+                    Text(durationLabel(for: track))
+                        .font(.custom("Inter-Regular", size: 12))
+                        .foregroundColor(Color.dsOnSurfaceVariant)
+                }
             }
 
             Spacer()
@@ -300,11 +309,18 @@ struct CityDetailView: View {
     private func durationLabel(for track: ExplorationTrack) -> String {
         guard let end = track.endedAt else { return "In progress" }
         let secs = Int(end.timeIntervalSince(track.startedAt))
+        guard secs >= 60 else { return "< 1 min" }
         let h = secs / 3600
         let m = (secs % 3600) / 60
-        if h > 0 { return "\(h)h \(m)m" }
-        if m > 0 { return "\(m)m" }
-        return "\(secs)s"
+        if h > 0 { return "\(h)h \(m)min" }
+        return "\(m) min"
+    }
+
+    /// True when the track has no meaningful data — distance is 0 and
+    /// duration is under 10 seconds. These are GPS cold-start artefacts.
+    private func isIncomplete(_ track: ExplorationTrack) -> Bool {
+        let duration = track.endedAt.map { $0.timeIntervalSince(track.startedAt) } ?? 0
+        return track.distanceKm == 0 && duration < 10
     }
 
     private func loadData() async {
