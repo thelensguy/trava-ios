@@ -20,7 +20,6 @@ struct CityDashboardView: View {
     @EnvironmentObject var cityService: CityService
     @EnvironmentObject var trackService: TrackService
     @EnvironmentObject var auth: AuthViewModel
-    @State private var showAddCity = false
 
     @AppStorage(DistanceUnit.storageKey) private var distanceUnitRaw: String = DistanceUnit.km.rawValue
     private var distanceUnit: DistanceUnit { DistanceUnit(rawValue: distanceUnitRaw) ?? .km }
@@ -57,7 +56,6 @@ struct CityDashboardView: View {
                         featuredCityCard
                     }
                     statsCard
-                    expandNetworkCard
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -75,25 +73,6 @@ struct CityDashboardView: View {
         .onChange(of: effectiveCity?.cityId) { _, _ in
             heroImage = nil
             Task { await loadHeroImage() }
-        }
-        // ── FAB ──────────────────────────────────────────────────────────
-        .overlay(alignment: .bottomTrailing) {
-            Button { showAddCity = true } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(Color(hex: "#002e69"))
-                    .frame(width: 56, height: 56)
-                    .background(LinearGradient.primaryCTA)
-                    .clipShape(Circle())
-                    .shadow(color: .black.opacity(0.35), radius: 16, x: 0, y: 4)
-            }
-            .padding(.trailing, 24)
-            .padding(.bottom, 24)
-        }
-        .sheet(isPresented: $showAddCity) {
-            AddManageCityView(selectedTab: $selectedTab)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showShareSheet) {
             if let img = shareImage {
@@ -376,48 +355,6 @@ struct CityDashboardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.dsSurfaceContainerHigh)   // bg-surface-container-high = #2a2a2a
         .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    // MARK: - Expand Network Card
-    // border-2 border-dashed border-outline-variant/30 rounded-xl p-8(32) h-[300px]
-
-    private var expandNetworkCard: some View {
-        VStack(spacing: 0) {
-            // w-16(64) h-16(64) rounded-full bg-surface-container-high mb-4(16)
-            ZStack {
-                Circle()
-                    .fill(Color.dsSurfaceContainerHigh)
-                    .frame(width: 64, height: 64)
-                Image(systemName: "plus")
-                    .font(.system(size: 28))    // text-3xl ≈ 30px
-                    .foregroundColor(Color.dsPrimary)
-            }
-            .padding(.bottom, 16)   // mb-4
-
-            Text("Expand Network")
-                .font(.custom("PlusJakartaSans-Bold", size: 16))
-                .foregroundColor(Color.dsOnSurface)
-
-            Text("Add a new metropolitan area to your tracking dashboard.")
-                .font(.custom("Inter-Regular", size: 12))   // text-xs
-                .foregroundColor(Color.dsOnSurfaceVariant)
-                .multilineTextAlignment(.center)
-                .lineSpacing(3)
-                .padding(.top, 8)   // mt-2
-                .padding(.horizontal, 16)
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 300)
-        .background(Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(
-                    Color.dsOutlineVariant.opacity(0.3),
-                    style: StrokeStyle(lineWidth: 2, dash: [6, 4])
-                )
-        )
-        .onTapGesture { showAddCity = true }
     }
 
 }

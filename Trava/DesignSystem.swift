@@ -289,33 +289,20 @@ struct DSTabBar: View {
 // HTML: bg-[#131313] px-6 h-16, justify-between, title centered, all #adc6ff
 
 struct DSNavBar: View {
-    var onHamburger: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 0) {
-            Button(action: onHamburger) {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 24))
-                    .foregroundColor(Color.dsPrimary)
-                    .padding(8)     // p-2
-            }
-            Text("URBAN ARCHITECT")
-                .font(.custom("PlusJakartaSans-ExtraBold", size: 18))  // font-extrabold text-lg
+            Text("TRAVA")
+                .font(.custom("PlusJakartaSans-ExtraBold", size: 18))
                 .foregroundColor(Color.dsPrimary)
-                .kerning(1.8)      // tracking-widest ≈ 0.1em
+                .kerning(1.8)
                 .frame(maxWidth: .infinity)
-            Button(action: {}) {
-                Image(systemName: "person.circle")
-                    .font(.system(size: 24))
-                    .foregroundColor(Color.dsPrimary)
-                    .padding(8)     // p-2
-            }
         }
         .padding(.horizontal, 24)  // px-6
         .frame(height: 64)         // h-16
         .background(
             Color(hex: "#131313")
-                .ignoresSafeArea(edges: .top)  // extends into status bar wherever placed
+                .ignoresSafeArea(edges: .top)
         )
     }
 }

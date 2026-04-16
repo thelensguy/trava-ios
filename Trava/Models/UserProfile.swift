@@ -1,7 +1,7 @@
 //  Models/UserProfile.swift
 //  Trava
 //
-//  Firestore data model for an Urban Architect user.
+//  Firestore data model for a Trava user.
 
 import Foundation
 import FirebaseFirestore
