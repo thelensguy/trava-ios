@@ -101,9 +101,13 @@ struct TravaMapView: UIViewRepresentable {
             showHeatmap: Bool,
             heatmapIntensity: Double = 1.0
         ) {
-            // ── Heatmap: layered below polylines at .aboveRoads ──────────────────
-            // Toggle adds/removes the overlay; polylines are always present either way.
             if showHeatmap {
+                // ── Heatmap mode: remove all polylines, show heatmap only ─────────
+                let toRemove = map.overlays.filter { !($0 is HeatmapOverlay) }
+                map.removeOverlays(toRemove)
+                currentPolyline  = nil
+                renderedTrackIds = []
+
                 let trackCount = allTracks.count
                 let needsRebuild = heatmapOverlay == nil
                     || trackCount       != lastHeatmapTrackCount
@@ -119,47 +123,47 @@ struct TravaMapView: UIViewRepresentable {
                     heatmapOverlay        = overlay
                     lastHeatmapTrackCount = trackCount
                     lastHeatmapIntensity  = heatmapIntensity
-                    map.addOverlay(overlay, level: .aboveRoads)   // polylines sit above at .aboveLabels
+                    map.addOverlay(overlay, level: .aboveLabels)
                     map.setRegion(savedRegion, animated: false)
                 }
             } else {
+                // ── Paths mode: remove heatmap, show polylines only ───────────────
                 if let h = heatmapOverlay {
                     map.removeOverlay(h)
                     heatmapOverlay        = nil
-                    lastHeatmapTrackCount = 0   // force full rebuild on next enable
+                    lastHeatmapTrackCount = 0   // force full rebuild when heatmap is re-enabled
                 }
-            }
 
-            // ── Completed track polylines: always visible ─────────────────────────
-            // Detect filter changes: if any rendered ID is gone from the current set,
-            // wipe all polylines and re-add only the current set.
-            let currentIds = Set(completedTracks.map { $0.trackId })
-            if !renderedTrackIds.isSubset(of: currentIds) {
-                let toRemove = map.overlays.filter { ($0 as? MKPolyline)?.title?.hasPrefix("completed:") == true }
-                map.removeOverlays(toRemove)
-                renderedTrackIds = []
-            }
+                // Detect filter changes: if any rendered ID left the current set,
+                // remove all completed polylines and re-add the current set cleanly.
+                let currentIds = Set(completedTracks.map { $0.trackId })
+                if !renderedTrackIds.isSubset(of: currentIds) {
+                    let toRemove = map.overlays.filter { ($0 as? MKPolyline)?.title?.hasPrefix("completed:") == true }
+                    map.removeOverlays(toRemove)
+                    renderedTrackIds = []
+                }
 
-            let newTracks = completedTracks.filter { !renderedTrackIds.contains($0.trackId) }
-            for track in newTracks {
-                var coords = track.coordinates.map { $0.clCoordinate }
-                guard coords.count >= 2 else { continue }
-                let polyline = MKPolyline(coordinates: &coords, count: coords.count)
-                polyline.title = "completed:\(track.trackId)"
-                map.addOverlay(polyline, level: .aboveLabels)
-                renderedTrackIds.insert(track.trackId)
-            }
+                let newTracks = completedTracks.filter { !renderedTrackIds.contains($0.trackId) }
+                for track in newTracks {
+                    var coords = track.coordinates.map { $0.clCoordinate }
+                    guard coords.count >= 2 else { continue }
+                    let polyline       = MKPolyline(coordinates: &coords, count: coords.count)
+                    polyline.title     = "completed:\(track.trackId)"
+                    map.addOverlay(polyline, level: .aboveLabels)
+                    renderedTrackIds.insert(track.trackId)
+                }
 
-            // ── Live recording path ───────────────────────────────────────────────
-            if let old = currentPolyline { map.removeOverlay(old) }
-            if currentPath.count >= 2 {
-                var pts = currentPath
-                let polyline = MKPolyline(coordinates: &pts, count: pts.count)
-                polyline.title = "recording"
-                map.addOverlay(polyline, level: .aboveLabels)
-                currentPolyline = polyline
-            } else {
-                currentPolyline = nil
+                // Live recording path (dashed).
+                if let old = currentPolyline { map.removeOverlay(old) }
+                if currentPath.count >= 2 {
+                    var pts        = currentPath
+                    let polyline   = MKPolyline(coordinates: &pts, count: pts.count)
+                    polyline.title = "recording"
+                    map.addOverlay(polyline, level: .aboveLabels)
+                    currentPolyline = polyline
+                } else {
+                    currentPolyline = nil
+                }
             }
         }
 
@@ -212,7 +216,7 @@ struct ExplorationMapView: View {
     @State private var searchText      = ""
     @State private var selectedFilter  = "All Time"
     @State private var isRecording      = false
-    @State private var showHeatmap      = true
+    @State private var showHeatmap      = false
     @State private var showFocusCard    = true
     @State private var recordingStartTime: Date?
     @State private var hascenteredOnUser = false
@@ -228,7 +232,7 @@ struct ExplorationMapView: View {
     // Settings-persisted map prefs
     @AppStorage("trava.mapTypeRaw")           private var mapTypeRaw: Int          = 0
     @AppStorage("trava.heatmapIntensity")     private var heatmapIntensity: Double = 1.0
-    @AppStorage("trava.showHeatmapDefault")   private var showHeatmapDefault: Bool = true
+    @AppStorage("trava.showHeatmapDefault")   private var showHeatmapDefault: Bool = false
     @AppStorage(DistanceUnit.storageKey)      private var distanceUnitRaw: String  = DistanceUnit.km.rawValue
 
     private var distanceUnit: DistanceUnit { DistanceUnit(rawValue: distanceUnitRaw) ?? .km }
@@ -634,7 +638,7 @@ struct ExplorationMapView: View {
             }
 
             // PATHS / HEATMAP toggle
-            floatPill(icon: showHeatmap ? "map.fill" : "square.3.layers.3d", active: showHeatmap) {
+            floatPill(icon: showHeatmap ? "map" : "flame", active: showHeatmap) {
                 showHeatmap.toggle()
             }
         }

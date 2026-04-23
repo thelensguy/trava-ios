@@ -285,6 +285,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Trava/Info.plist;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Trava imports your workout routes to build your exploration map";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Trava tracks your location to map your urban exploration and build a heatmap of every place you've discovered.";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "Trava uses background location to detect significant movement and keep your exploration map up to date even when the app is closed.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Trava uses your location to show your position on the map and record exploration sessions.";
@@ -333,6 +334,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Trava/Info.plist;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Trava imports your workout routes to build your exploration map";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Trava tracks your location to map your urban exploration and build a heatmap of every place you've discovered.";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "Trava uses background location to detect significant movement and keep your exploration map up to date even when the app is closed.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Trava uses your location to show your position on the map and record exploration sessions.";

@@ -2,9 +2,13 @@
 //  Trava
 //
 //  Manages Firebase Authentication state and sign-in flows:
-//    • Sign in with Apple  (AuthenticationServices — no extra package needed)
 //    • Google Sign-In      (requires GoogleSignIn-iOS SPM package — see README)
 //    • Email / Password
+//
+//  Sign in with Apple is disabled — requires paid Apple Developer account ($99/yr).
+//  To re-enable: add AuthenticationServices + CryptoKit imports, uncomment
+//  signInWithApple(), ASAuthorizationControllerDelegate extension, and
+//  Apple private vars below, then re-add com.apple.developer.applesignin entitlement.
 //
 //  NOTE — Google Sign-In setup:
 //    1. Add the GoogleSignIn-iOS package via SPM:
@@ -14,8 +18,8 @@
 
 import SwiftUI
 import Combine
-import AuthenticationServices
-import CryptoKit
+// import AuthenticationServices  // Re-enable with Sign in with Apple (paid account)
+// import CryptoKit               // Re-enable with Sign in with Apple
 import FirebaseCore
 import FirebaseAuth
 
@@ -42,11 +46,6 @@ final class AuthViewModel: NSObject, ObservableObject {
     private var authStateHandle: AuthStateDidChangeListenerHandle?
 
     private static let guestKey = "trava.isGuestUser"
-
-    // MARK: - Apple sign-in bridge
-
-    private var appleSignInContinuation: CheckedContinuation<ASAuthorization, Error>?
-    private var currentNonce: String?
 
     // MARK: - Init
 
@@ -84,53 +83,6 @@ final class AuthViewModel: NSObject, ObservableObject {
     var currentUserId: String? {
         if isGuest { return UserProfile.guestUserId }
         return firebaseUser?.uid
-    }
-
-    // MARK: - Sign In with Apple
-
-    func signInWithApple() async {
-        isLoading = true
-        authError = nil
-        defer { isLoading = false }
-
-        do {
-            // 1. Generate a cryptographic nonce and store the raw value for Firebase.
-            let nonce = randomNonceString()
-            currentNonce = nonce
-
-            // 2. Present the native Apple sign-in sheet and await the result.
-            let authorization = try await withCheckedThrowingContinuation { continuation in
-                appleSignInContinuation = continuation
-
-                let request = ASAuthorizationAppleIDProvider().createRequest()
-                request.requestedScopes = [.fullName, .email]
-                request.nonce = sha256(nonce)   // hashed nonce sent to Apple
-
-                let controller = ASAuthorizationController(authorizationRequests: [request])
-                controller.delegate = self
-                controller.performRequests()
-            }
-
-            // 3. Exchange the Apple credential for a Firebase credential.
-            guard
-                let appleCredential = authorization.credential as? ASAuthorizationAppleIDCredential,
-                let tokenData = appleCredential.identityToken,
-                let idToken = String(data: tokenData, encoding: .utf8),
-                let rawNonce = currentNonce
-            else {
-                throw AuthError.invalidCredential
-            }
-
-            let credential = OAuthProvider.credential(
-                providerID: .apple,
-                idToken: idToken,
-                rawNonce: rawNonce
-            )
-            try await Auth.auth().signIn(with: credential)
-
-        } catch {
-            authError = error.localizedDescription
-        }
     }
 
     // MARK: - Sign In with Google
@@ -285,31 +237,6 @@ final class AuthViewModel: NSObject, ObservableObject {
     var isAuthenticated: Bool { firebaseUser != nil || isGuest }
 }
 
-// MARK: - ASAuthorizationControllerDelegate
-
-extension AuthViewModel: ASAuthorizationControllerDelegate {
-
-    nonisolated func authorizationController(
-        controller: ASAuthorizationController,
-        didCompleteWithAuthorization authorization: ASAuthorization
-    ) {
-        Task { @MainActor in
-            appleSignInContinuation?.resume(returning: authorization)
-            appleSignInContinuation = nil
-        }
-    }
-
-    nonisolated func authorizationController(
-        controller: ASAuthorizationController,
-        didCompleteWithError error: Error
-    ) {
-        Task { @MainActor in
-            appleSignInContinuation?.resume(throwing: error)
-            appleSignInContinuation = nil
-        }
-    }
-}
-
 // MARK: - Private helpers
 
 private extension AuthViewModel {
@@ -326,31 +253,4 @@ private extension AuthViewModel {
         }
     }
 
-    /// Cryptographically secure random string for the Apple sign-in nonce.
-    func randomNonceString(length: Int = 32) -> String {
-        let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
-        var result = ""
-        var remaining = length
-        while remaining > 0 {
-            var randoms = [UInt8](repeating: 0, count: 16)
-            guard SecRandomCopyBytes(kSecRandomDefault, randoms.count, &randoms) == errSecSuccess
-            else { continue }
-            for byte in randoms {
-                guard remaining > 0 else { break }
-                if byte < charset.count {
-                    result.append(charset[Int(byte)])
-                    remaining -= 1
-                }
-            }
-        }
-        return result
-    }
-
-    /// SHA-256 hash of the nonce, sent to Apple so Firebase can verify it.
-    func sha256(_ input: String) -> String {
-        SHA256
-            .hash(data: Data(input.utf8))
-            .map { String(format: "%02x", $0) }
-            .joined()
-    }
 }
