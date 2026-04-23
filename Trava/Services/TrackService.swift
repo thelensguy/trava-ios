@@ -43,12 +43,14 @@ final class TrackService: ObservableObject {
     // MARK: - Save locally (CoreData, offline-safe)
 
     func saveTrackLocally(_ track: ExplorationTrack) async throws {
+        print("[TrackService] saving: city='\(track.cityName)' distanceKm=\(track.distanceKm) coords=\(track.coordinates.count)")
         let context = persistence.container.newBackgroundContext()
         try await context.perform {
             let entity = TrackEntity(context: context)
             entity.configure(from: track, in: context)
             try context.save()
         }
+        print("[TrackService] saved to CoreData ✓")
     }
 
     // MARK: - Load local tracks for a user
