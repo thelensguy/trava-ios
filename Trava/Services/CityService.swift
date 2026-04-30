@@ -244,7 +244,7 @@ final class CityService: ObservableObject {
                             let prior  = (try? JSONDecoder().decode([Coordinate].self, from: entity.coordinatesData)) ?? []
                             let merged = prior + track.coordinates
                             entity.coordinatesData = (try? JSONEncoder().encode(merged)) ?? Data()
-                            entity.coveragePercent = min(1.0, Double(merged.count) / 5_000.0)
+                            entity.coveragePercent = CityService.calculateCoverage(coordinates: merged)
                             try writeContext.save()
                             result = entity.toCity()
 
@@ -257,7 +257,7 @@ final class CityService: ObservableObject {
                                 coordinates:     track.coordinates,
                                 totalDistanceKm: track.distanceKm,
                                 totalSessions:   1,
-                                coveragePercent: min(1.0, Double(track.coordinates.count) / 5_000.0)
+                                coveragePercent: CityService.calculateCoverage(coordinates: track.coordinates)
                             )
                             let entity = CityEntity(context: writeContext)
                             entity.configure(from: newCity)
@@ -364,7 +364,7 @@ final class CityService: ObservableObject {
                             let p = (try? JSONDecoder().decode([Coordinate].self, from: primary.coordinatesData)) ?? []
                             let d = (try? JSONDecoder().decode([Coordinate].self, from: dup.coordinatesData)) ?? []
                             primary.coordinatesData = (try? JSONEncoder().encode(p + d)) ?? Data()
-                            primary.coveragePercent = min(1.0, Double((p + d).count) / 5_000.0)
+                            primary.coveragePercent = CityService.calculateCoverage(coordinates: p + d)
                             if dup.firstVisitedAt < primary.firstVisitedAt {
                                 primary.firstVisitedAt = dup.firstVisitedAt
                             }
@@ -380,6 +380,38 @@ final class CityService: ObservableObject {
 
         // Reload cache to reflect the deduplicated state.
         await loadCityCache(userId: userId)
+        await refresh(userId: userId)
+    }
+
+    // MARK: - One-time coverage recalculation
+
+    /// Recalculates coveragePercent for all stored cities using the grid-cell formula.
+    /// Called once on launch to migrate data saved with the old point-count formula.
+    func recalculateAllCoverages(userId: String) async {
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            writeQueue.async { [self] in
+                writeContext.performAndWait {
+                    let req = NSFetchRequest<CityEntity>(entityName: "CityEntity")
+                    req.predicate = NSPredicate(format: "userId == %@", userId)
+                    guard let all = try? writeContext.fetch(req) else { return }
+
+                    var changed = false
+                    for entity in all {
+                        let coords = (try? JSONDecoder().decode(
+                            [Coordinate].self, from: entity.coordinatesData
+                        )) ?? []
+                        guard !coords.isEmpty else { continue }
+                        let updated = CityService.calculateCoverage(coordinates: coords)
+                        if abs(updated - entity.coveragePercent) > 0.001 {
+                            entity.coveragePercent = updated
+                            changed = true
+                        }
+                    }
+                    if changed { try? writeContext.save() }
+                }
+                cont.resume()
+            }
+        }
         await refresh(userId: userId)
     }
 
@@ -399,6 +431,35 @@ final class CityService: ObservableObject {
 
     func refresh(userId: String) async {
         cities = (try? await loadCities(userId: userId)) ?? []
+    }
+
+    // MARK: - Coverage calculation
+
+    /// Grid-cell coverage: counts unique 50m cells visited vs. total cells in the
+    /// city bounding box.  Capped at 0.99 so 100% is never shown for real data.
+    /// nonisolated + static: pure computation, safe to call from writeQueue.
+    nonisolated private static func calculateCoverage(
+        coordinates: [Coordinate],
+        boundary:    [Coordinate] = []
+    ) -> Double {
+        guard !coordinates.isEmpty else { return 0 }
+        let gridSize = 0.0005
+
+        let visitedCells = Set(coordinates.map { coord in
+            "\(Int(coord.latitude  / gridSize))_\(Int(coord.longitude / gridSize))"
+        })
+
+        let bboxCoords = boundary.isEmpty ? coordinates : boundary
+        let lats = bboxCoords.map { $0.latitude }
+        let lons = bboxCoords.map { $0.longitude }
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLon = lons.min(), let maxLon = lons.max() else { return 0 }
+
+        let latCells  = max(1, Int((maxLat - minLat) / gridSize))
+        let lonCells  = max(1, Int((maxLon - minLon) / gridSize))
+        let totalCells = latCells * lonCells
+
+        return min(0.99, Double(visitedCells.count) / Double(max(totalCells, 1)))
     }
 
     // MARK: - Private helpers
