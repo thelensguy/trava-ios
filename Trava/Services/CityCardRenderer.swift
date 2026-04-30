@@ -63,7 +63,7 @@ enum CityCardRenderer {
         boundary:     [[Double]],
         trackCoords:  [Coordinate]
     ) {
-        let padding: CGFloat = max(8, size.width * 0.07)
+        let padding: CGFloat = 36
 
         // 1. Background
         ctx.setFillColor(UIColor(hex6: "0D0D0D").cgColor)
@@ -139,28 +139,39 @@ enum CityCardRenderer {
         ctx.restoreGState()
     }
 
-    // MARK: - Mercator projection
+    // MARK: - Mercator projection (two-pass)
 
+    // Pass 1 maps geographic coords to preliminary pixel space.
+    // Pass 2 measures the actual pixel bounding box and re-fits it to the padded
+    // canvas — this guarantees any city shape fits completely regardless of aspect
+    // ratio or Mercator distortion, and is reusable for track coords via project().
     private struct Projection {
-        let minLon: Double
-        let minMY:  Double   // min Mercator Y
-        let scale:  Double
-        let offsetX: Double  // additional centering offset in points
-        let offsetY: Double
-        let size:   CGSize
+        // Pass 1
+        let minLon:  Double
+        let minMY:   Double
+        let p1Scale: Double
         let padding: CGFloat
+        let size:    CGSize
+        // Pass 2 adjustment
+        let pixMinX:    Double
+        let pixMinY:    Double
+        let p2Scale:    Double
+        let centerOffX: Double
+        let centerOffY: Double
 
         func project(_ coord: CLLocationCoordinate2D) -> CGPoint {
-            let latRad = coord.latitude  * .pi / 180
+            let latRad = coord.latitude * .pi / 180
             let my     = log(tan(.pi / 4 + latRad / 2)) * 180 / .pi
-            let x = (coord.longitude - minLon) * scale + Double(padding) + offsetX
-            // Canvas y increases downward; map Mercator y increases northward → flip.
-            let y = Double(size.height) - ((my - minMY) * scale + Double(padding) + offsetY)
-            return CGPoint(x: x, y: y)
+            let rawX   = (coord.longitude - minLon) * p1Scale + Double(padding)
+            // Mercator Y increases northward; canvas Y increases downward → flip.
+            let rawY   = Double(size.height) - ((my - minMY) * p1Scale + Double(padding))
+            return CGPoint(
+                x: (rawX - pixMinX) * p2Scale + centerOffX,
+                y: (rawY - pixMinY) * p2Scale + centerOffY
+            )
         }
     }
 
-    /// Projects geographic coordinates to canvas points, fitting with uniform scale + centering.
     private static func project(
         _ coords: [CLLocationCoordinate2D],
         size: CGSize,
@@ -176,32 +187,50 @@ enum CityCardRenderer {
             let minLon = lons.min(), let maxLon = lons.max(),
             let minMY  = mys.min(),  let maxMY  = mys.max()
         else {
-            let proj = Projection(minLon: 0, minMY: 0, scale: 1,
-                                  offsetX: 0, offsetY: 0, size: size, padding: padding)
-            return ([], proj)
+            return ([], Projection(minLon: 0, minMY: 0, p1Scale: 1, padding: padding, size: size,
+                                   pixMinX: 0, pixMinY: 0, p2Scale: 1,
+                                   centerOffX: Double(padding), centerOffY: Double(padding)))
         }
 
-        let availW = Double(size.width)  - 2 * Double(padding)
-        let availH = Double(size.height) - 2 * Double(padding)
-        let spanLon = maxLon - minLon
-        let spanMY  = maxMY  - minMY
+        // Pass 1 — preliminary scale from geographic span
+        let availW  = Double(size.width)  - 2 * Double(padding)
+        let availH  = Double(size.height) - 2 * Double(padding)
+        let spanLon = max(maxLon - minLon, 1e-9)
+        let spanMY  = max(maxMY  - minMY,  1e-9)
+        let p1Scale = min(availW / spanLon, availH / spanMY)
 
-        let scaleX = spanLon > 0 ? availW / spanLon : 1
-        let scaleY = spanMY  > 0 ? availH / spanMY  : 1
-        let scale  = min(scaleX, scaleY)
+        // Pass 1 raw pixel points
+        let rawPts: [CGPoint] = zip(lons, mys).map { lon, my in
+            CGPoint(x: (lon - minLon) * p1Scale + Double(padding),
+                    y: Double(size.height) - ((my - minMY) * p1Scale + Double(padding)))
+        }
 
-        // Centre within available area
-        let usedW  = spanLon * scale
-        let usedH  = spanMY  * scale
-        let offX   = (availW - usedW) / 2
-        let offY   = (availH - usedH) / 2
+        // Pass 2 — measure actual pixel bounding box and fit to canvas
+        let pixMinX = rawPts.map { $0.x }.min()!
+        let pixMaxX = rawPts.map { $0.x }.max()!
+        let pixMinY = rawPts.map { $0.y }.min()!
+        let pixMaxY = rawPts.map { $0.y }.max()!
+        let pixW    = max(pixMaxX - pixMinX, 1)
+        let pixH    = max(pixMaxY - pixMinY, 1)
+
+        let targetW = Double(size.width)  - 2 * Double(padding)
+        let targetH = Double(size.height) - 2 * Double(padding)
+        let p2Scale = min(targetW / pixW, targetH / pixH)
+
+        let scaledW    = pixW    * p2Scale
+        let scaledH    = pixH    * p2Scale
+        let centerOffX = (Double(size.width)  - scaledW) / 2
+        let centerOffY = (Double(size.height) - scaledH) / 2
 
         let proj = Projection(
-            minLon: minLon, minMY: minMY, scale: scale,
-            offsetX: offX, offsetY: offY,
-            size: size, padding: padding
+            minLon: minLon, minMY: minMY, p1Scale: p1Scale, padding: padding, size: size,
+            pixMinX: pixMinX, pixMinY: pixMinY, p2Scale: p2Scale,
+            centerOffX: centerOffX, centerOffY: centerOffY
         )
-        return (coords.map { proj.project($0) }, proj)
+        return (rawPts.map { raw in
+            CGPoint(x: (raw.x - pixMinX) * p2Scale + centerOffX,
+                    y: (raw.y - pixMinY) * p2Scale + centerOffY)
+        }, proj)
     }
 
     // MARK: - Helpers

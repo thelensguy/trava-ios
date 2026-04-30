@@ -136,7 +136,8 @@ final class TrackService: ObservableObject {
     func cityName(for coordinate: CLLocationCoordinate2D?) async -> String {
         guard let coordinate else { return "Unknown City" }
         let item = await reverseGeocode(coordinate: coordinate)
-        return item?.addressRepresentations?.cityName ?? item?.addressRepresentations?.cityWithContext ?? "Unknown City"
+        let raw = item?.addressRepresentations?.cityName ?? item?.addressRepresentations?.cityWithContext
+        return raw?.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? "Unknown City"
     }
 
     private func reverseGeocode(coordinate: CLLocationCoordinate2D) async -> MKMapItem? {

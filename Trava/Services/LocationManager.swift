@@ -179,7 +179,7 @@ final class LocationManager: NSObject, ObservableObject {
     private func applyPassiveSettings() {
         manager.desiredAccuracy                = kCLLocationAccuracyNearestTenMeters
         manager.distanceFilter                 = 20
-        manager.allowsBackgroundLocationUpdates = true
+        manager.allowsBackgroundLocationUpdates = false
         manager.pausesLocationUpdatesAutomatically = true
     }
 

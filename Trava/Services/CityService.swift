@@ -194,7 +194,8 @@ final class CityService: ObservableObject {
         let mid   = track.coordinates[track.coordinates.count / 2]
         let coord = CLLocationCoordinate2D(latitude: mid.latitude, longitude: mid.longitude)
         let item  = await reverseGeocode(coordinate: coord)
-        let city    = item?.addressRepresentations?.cityName ?? track.cityName
+        let rawCity = item?.addressRepresentations?.cityName ?? track.cityName
+        let city    = rawCity.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? rawCity
         let country = item?.addressRepresentations?.regionName ?? "Unknown"
         return (city, country)
     }
@@ -430,8 +431,8 @@ final class CityService: ObservableObject {
             let c     = coords[idx]
             let coord = CLLocationCoordinate2D(latitude: c.latitude, longitude: c.longitude)
             guard let item = await reverseGeocode(coordinate: coord) else { continue }
-            let city    = item.addressRepresentations?.cityName
-                        ?? fallbackCityName
+            let rawCity = item.addressRepresentations?.cityName ?? fallbackCityName
+            let city    = rawCity.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? rawCity
             let country = item.addressRepresentations?.regionName
                         ?? "Unknown"
             guard city != "Unknown City", !city.isEmpty else { continue }

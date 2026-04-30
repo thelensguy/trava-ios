@@ -72,6 +72,11 @@ struct AddManageCityView: View {
                 Task { await cityService.refresh(userId: userId) }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CityBoundaryUpdated"))) { _ in
+            // Each CityRowView updates its own @State snapshot reactively when its
+            // boundary fetch succeeds. This observer is a coordination hook for
+            // other components (e.g. CityDetailView) that may need to respond.
+        }
     }
 
     // MARK: - Stats Header
@@ -197,7 +202,9 @@ struct CityRowView: View {
     let city: City
     @AppStorage(DistanceUnit.storageKey) private var distanceUnitRaw: String = DistanceUnit.km.rawValue
     private var distanceUnit: DistanceUnit { DistanceUnit(rawValue: distanceUnitRaw) ?? .km }
-    @State private var snapshot: UIImage?
+    @State private var snapshot:      UIImage?
+    @State private var boundaryLoaded = false
+    @State private var attemptsUsed   = 0
 
     var body: some View {
         HStack(spacing: 16) {
@@ -236,19 +243,45 @@ struct CityRowView: View {
     }
 
     private func loadSnapshot() async {
-        guard snapshot == nil else { return }
-        let size     = CGSize(width: 128, height: 128)
-        let name     = city.cityName
-        let country  = city.country
-        let coords   = city.coordinates
+        // Stop if boundary already loaded or both attempts exhausted.
+        guard !boundaryLoaded, attemptsUsed < 2 else { return }
+
+        // Enforce 2-second delay between OSM fetch attempts (rate-limit protection).
+        if attemptsUsed > 0 {
+            try? await Task.sleep(for: .seconds(2))
+        }
+        guard !Task.isCancelled else { return }
+
+        attemptsUsed += 1
+        let size    = CGSize(width: 128, height: 128)
+        let name    = city.cityName
+        let country = city.country
+        let coords  = city.coordinates
+
         let boundary = await OSMService.shared.fetchCityBoundary(cityName: name, country: country)
-        snapshot = await Task.detached(priority: .userInitiated) {
-            if let boundary {
-                return CityCardRenderer.render(boundary: boundary, trackCoords: coords, size: size)
-            } else {
-                return CityCardRenderer.renderPlaceholder(cityName: name, size: size)
+        guard !Task.isCancelled else { return }
+
+        if let boundary {
+            snapshot = await Task.detached(priority: .userInitiated) {
+                CityCardRenderer.render(boundary: boundary, trackCoords: coords, size: size)
+            }.value
+            boundaryLoaded = true
+            NotificationCenter.default.post(
+                name: Notification.Name("CityBoundaryUpdated"),
+                object: nil,
+                userInfo: ["cityName": name]
+            )
+        } else {
+            // Show placeholder while waiting for the retry.
+            if snapshot == nil {
+                let n = name
+                snapshot = await Task.detached(priority: .userInitiated) {
+                    CityCardRenderer.renderPlaceholder(cityName: n, size: size)
+                }.value
             }
-        }.value
+            // Tail-call retry — the guard above will enforce the 2s delay and max-2 cap.
+            await loadSnapshot()
+        }
     }
 }
 
