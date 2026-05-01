@@ -200,9 +200,12 @@ enum DistanceUnit: String, CaseIterable {
         self == .km ? km : km * 0.621371
     }
 
-    /// Formatted string: e.g. "3.7 km" or "2.3 mi".
-    func format(_ km: Double, decimals: Int = 1) -> String {
-        String(format: "%.\(decimals)f \(label)", converted(km))
+    /// Formatted string with smart decimals:
+    /// < 10 → one decimal place ("9.4 mi"), 10+ → no decimals ("27 mi").
+    func format(_ km: Double) -> String {
+        let value = converted(km)
+        let fmt   = value < 10 ? "%.1f" : "%.0f"
+        return String(format: "\(fmt) \(label)", value)
     }
 }
 

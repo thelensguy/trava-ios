@@ -236,10 +236,11 @@ struct CityRowView: View {
                 Text(city.cityName)
                     .font(.custom("PlusJakartaSans-Bold", size: 16))
                     .foregroundColor(Color.dsOnSurface)
-                Text("\(city.country) · \(city.totalSessions) session\(city.totalSessions == 1 ? "" : "s") · \(distanceUnit.format(city.totalDistanceKm))")
+                Text("\(city.country) · \(city.totalSessions) sess. · \(distanceUnit.format(city.totalDistanceKm))")
                     .font(.custom("Inter-Regular", size: 12))
                     .foregroundColor(Color.dsOnSurfaceVariant)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
 
             Spacer()

@@ -262,7 +262,7 @@ struct SettingsView: View {
                     Rectangle()
                         .fill(Color.dsOutlineVariant.opacity(0.3))
                         .frame(width: 1, height: 36)
-                    statItem("Distance", value: distanceUnit.format(totalDistanceKm, decimals: 0))
+                    statItem("Distance", value: distanceUnit.format(totalDistanceKm))
                     Rectangle()
                         .fill(Color.dsOutlineVariant.opacity(0.3))
                         .frame(width: 1, height: 36)
