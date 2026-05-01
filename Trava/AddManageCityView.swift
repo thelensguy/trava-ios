@@ -35,29 +35,41 @@ struct AddManageCityView: View {
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
 
-                // Stats row
+                // Stats — scrolls away with content, never pinned
                 statsHeader
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 24)
                     .padding(.top, 24)
+                    .padding(.bottom, 16)
 
-                // Search / filter
-                filterBar
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 24)
-
-                // Cities or empty state
-                if cityService.cities.isEmpty {
-                    emptyState
+                // Search bar as pinned section header — sticks below DSNavBar
+                Section(header:
+                    filterBar
                         .padding(.horizontal, 24)
-                } else {
-                    citiesSection
-                        .padding(.horizontal, 24)
+                        .padding(.vertical, 10)
+                        .background(Color.dsBackground)
+                ) {
+                    // Cities or empty state below the sticky bar
+                    if cityService.cities.isEmpty {
+                        emptyState
+                            .padding(.horizontal, 24)
+                            .padding(.top, 8)
+                    } else {
+                        citiesSection
+                            .padding(.horizontal, 24)
+                            .padding(.top, 8)
+                    }
                 }
             }
             .padding(.bottom, 32)
+        }
+        // NavigationStack with hidden toolbar drops the parent ZStack's safeAreaInset
+        // (DSNavBar, 64 pt) and only passes the system status bar through.
+        // This explicit inset restores the missing top clearance so stats are
+        // visible on launch and the pinned search bar anchors below DSNavBar.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Color.clear.frame(height: 64)
         }
         .background(Color.dsBackground.ignoresSafeArea())
         .onAppear {
@@ -85,8 +97,8 @@ struct AddManageCityView: View {
         HStack(spacing: 12) {
             statPill(value: "\(cityService.cities.count)", label: "Cities",
                      icon: "mappin.circle.fill")
-            statPill(value: String(format: "%.0f", distanceUnit.converted(totalDistanceKm)),
-                     label: distanceUnit.label,
+            statPill(value: String(format: "%.1f \(distanceUnit.label)", distanceUnit.converted(totalDistanceKm)),
+                     label: "Distance",
                      icon: "figure.walk")
             statPill(value: "\(totalTracks)", label: "Tracks",
                      icon: "square.3.layers.3d")
