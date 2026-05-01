@@ -28,6 +28,12 @@ final class PersistenceController {
 
         if inMemory {
             container.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
+        } else {
+            // Allow lightweight migration so adding new optional attributes
+            // (e.g. administrativeArea) doesn't crash existing installs.
+            let desc = container.persistentStoreDescriptions.first
+            desc?.setOption(true as NSNumber, forKey: NSMigratePersistentStoresAutomaticallyOption)
+            desc?.setOption(true as NSNumber, forKey: NSInferMappingModelAutomaticallyOption)
         }
 
         container.loadPersistentStores { _, error in
@@ -83,18 +89,19 @@ final class PersistenceController {
         cityEntity.managedObjectClassName = NSStringFromClass(CityEntity.self)
 
         cityEntity.properties = [
-            attr("cityId",          .stringAttributeType),
-            attr("userId",          .stringAttributeType),
-            attr("cityName",        .stringAttributeType),
-            attr("country",         .stringAttributeType, defaultValue: ""),
-            attr("firstVisitedAt",  .dateAttributeType),
-            attr("lastVisitedAt",   .dateAttributeType),
-            attr("coordinatesData", .binaryDataAttributeType),
-            attr("totalDistanceKm", .doubleAttributeType,   defaultValue: 0.0),
-            attr("totalSessions",   .integer32AttributeType, defaultValue: 0),
-            attr("coveragePercent", .doubleAttributeType,   defaultValue: 0.0),
-            attr("isPublic",        .booleanAttributeType,  defaultValue: false),
-            attr("isSynced",        .booleanAttributeType,  defaultValue: false),
+            attr("cityId",              .stringAttributeType),
+            attr("userId",              .stringAttributeType),
+            attr("cityName",            .stringAttributeType),
+            attr("country",             .stringAttributeType,    defaultValue: ""),
+            attr("administrativeArea",  .stringAttributeType,    defaultValue: ""),
+            attr("firstVisitedAt",      .dateAttributeType),
+            attr("lastVisitedAt",       .dateAttributeType),
+            attr("coordinatesData",     .binaryDataAttributeType),
+            attr("totalDistanceKm",     .doubleAttributeType,    defaultValue: 0.0),
+            attr("totalSessions",       .integer32AttributeType, defaultValue: 0),
+            attr("coveragePercent",     .doubleAttributeType,    defaultValue: 0.0),
+            attr("isPublic",            .booleanAttributeType,   defaultValue: false),
+            attr("isSynced",            .booleanAttributeType,   defaultValue: false),
         ]
 
         // -- CityBoundaryEntity --

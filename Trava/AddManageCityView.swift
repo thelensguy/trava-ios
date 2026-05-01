@@ -6,6 +6,7 @@
 //  and empty state. Hosted inside ContentView's NavigationStack.
 
 import SwiftUI
+import CoreLocation
 
 struct AddManageCityView: View {
     @Binding var selectedTab: AppTab
@@ -266,12 +267,21 @@ struct CityRowView: View {
         guard !Task.isCancelled else { return }
 
         attemptsUsed += 1
-        let size    = CGSize(width: 128, height: 128)
-        let name    = city.cityName
-        let country = city.country
-        let coords  = city.coordinates
+        let size       = CGSize(width: 128, height: 128)
+        let name       = city.cityName
+        let country    = city.country
+        let adminArea  = city.administrativeArea
+        let coords     = city.coordinates
+        let centerCoord = coords.first.map {
+            CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+        }
 
-        let boundary = await OSMService.shared.fetchCityBoundary(cityName: name, country: country)
+        let boundary = await OSMService.shared.fetchCityBoundary(
+            cityName:           name,
+            country:            country,
+            administrativeArea: adminArea.isEmpty ? nil : adminArea,
+            coordinates:        centerCoord
+        )
         guard !Task.isCancelled else { return }
 
         if let boundary {

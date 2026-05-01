@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UIKit
+import CoreLocation
 
 struct CityDetailView: View {
     let city: City
@@ -329,14 +330,23 @@ struct CityDetailView: View {
             heroLoading = true
             defer { heroLoading = false }   // always clears spinner, even on early return
 
-            let name    = city.cityName
-            let country = city.country
-            let coords  = city.coordinates
-            let size    = CGSize(width: 750, height: 500)
+            let name       = city.cityName
+            let country    = city.country
+            let adminArea  = city.administrativeArea
+            let coords     = city.coordinates
+            let size       = CGSize(width: 750, height: 500)
+            let centerCoord = coords.first.map {
+                CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+            }
 
             print("[CityDetail] loadData — city='\(name)' country='\(country)' coords=\(coords.count)")
 
-            let boundary = await OSMService.shared.fetchCityBoundary(cityName: name, country: country)
+            let boundary = await OSMService.shared.fetchCityBoundary(
+                cityName:           name,
+                country:            country,
+                administrativeArea: adminArea.isEmpty ? nil : adminArea,
+                coordinates:        centerCoord
+            )
             print("[CityDetail] boundary: \(boundary == nil ? "nil" : "\(boundary!.count) pts")")
 
             heroImage = await Task.detached(priority: .userInitiated) {

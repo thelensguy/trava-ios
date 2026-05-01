@@ -19,6 +19,7 @@ struct City: Codable, Identifiable {
     var userId: String
     var cityName: String
     var country: String
+    var administrativeArea: String   // state / province — "" for non-US or unknown
     var firstVisitedAt: Date
     var lastVisitedAt: Date
     var coordinates: [Coordinate]   // all sampled coords within this city
@@ -38,6 +39,7 @@ struct City: Codable, Identifiable {
         userId: String,
         cityName: String,
         country: String,
+        administrativeArea: String = "",
         firstVisitedAt: Date = Date(),
         lastVisitedAt: Date = Date(),
         coordinates: [Coordinate] = [],
@@ -47,11 +49,12 @@ struct City: Codable, Identifiable {
         isPublic: Bool = false,
         isSynced: Bool = false
     ) {
-        self.cityId          = cityId
-        self.userId          = userId
-        self.cityName        = cityName
-        self.country         = country
-        self.firstVisitedAt  = firstVisitedAt
+        self.cityId              = cityId
+        self.userId              = userId
+        self.cityName            = cityName
+        self.country             = country
+        self.administrativeArea  = administrativeArea
+        self.firstVisitedAt      = firstVisitedAt
         self.lastVisitedAt   = lastVisitedAt
         self.coordinates     = coordinates
         self.totalDistanceKm = totalDistanceKm
@@ -65,11 +68,12 @@ struct City: Codable, Identifiable {
 
     func firestoreData() -> [String: Any] {
         [
-            "cityId":          cityId,
-            "userId":          userId,
-            "cityName":        cityName,
-            "country":         country,
-            "firstVisitedAt":  Timestamp(date: firstVisitedAt),
+            "cityId":              cityId,
+            "userId":              userId,
+            "cityName":            cityName,
+            "country":             country,
+            "administrativeArea":  administrativeArea,
+            "firstVisitedAt":      Timestamp(date: firstVisitedAt),
             "lastVisitedAt":   Timestamp(date: lastVisitedAt),
             "coordinates":     coordinates.map { $0.geoPoint },
             "totalDistanceKm": totalDistanceKm,
@@ -88,6 +92,7 @@ final class CityEntity: NSManagedObject {
     @NSManaged var userId: String
     @NSManaged var cityName: String
     @NSManaged var country: String
+    @NSManaged var administrativeArea: String
     @NSManaged var firstVisitedAt: Date
     @NSManaged var lastVisitedAt: Date
     @NSManaged var coordinatesData: Data    // JSON-encoded [Coordinate]
@@ -100,11 +105,12 @@ final class CityEntity: NSManagedObject {
     func toCity() -> City? {
         let coords = (try? JSONDecoder().decode([Coordinate].self, from: coordinatesData)) ?? []
         return City(
-            cityId:          cityId,
-            userId:          userId,
-            cityName:        cityName,
-            country:         country,
-            firstVisitedAt:  firstVisitedAt,
+            cityId:             cityId,
+            userId:             userId,
+            cityName:           cityName,
+            country:            country,
+            administrativeArea: administrativeArea,
+            firstVisitedAt:     firstVisitedAt,
             lastVisitedAt:   lastVisitedAt,
             coordinates:     coords,
             totalDistanceKm: totalDistanceKm,
@@ -115,11 +121,12 @@ final class CityEntity: NSManagedObject {
     }
 
     func configure(from city: City) {
-        cityId          = city.cityId
-        userId          = city.userId
-        cityName        = city.cityName
-        country         = city.country
-        firstVisitedAt  = city.firstVisitedAt
+        cityId              = city.cityId
+        userId              = city.userId
+        cityName            = city.cityName
+        country             = city.country
+        administrativeArea  = city.administrativeArea
+        firstVisitedAt      = city.firstVisitedAt
         lastVisitedAt   = city.lastVisitedAt
         coordinatesData = (try? JSONEncoder().encode(city.coordinates)) ?? Data()
         totalDistanceKm = city.totalDistanceKm
