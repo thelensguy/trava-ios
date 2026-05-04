@@ -43,7 +43,7 @@ struct CityDetailView: View {
         .onAppear { Task { await loadData() } }
         .sheet(isPresented: $showShare) {
             if let img = shareImage {
-                ActivityView(activityItems: [img, "Explored \(city.cityName) on Trava 🗺️"])
+                ActivityView(activityItems: [img, "I've explored \(Int(city.coveragePercent * 100))% of \(city.cityName) 🗺️ #Trava #Explore"])
             }
         }
         .alert("Share Failed", isPresented: Binding(

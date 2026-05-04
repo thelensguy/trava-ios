@@ -1,17 +1,16 @@
 //  Services/CitySnapshotRenderer.swift
 //  Trava
 //
-//  Renders a shareable 1080×1080 UIImage for a City.
+//  Renders a shareable 1080×1080 UIImage for a City in the app's
+//  city-outline card style — dark background, glowing OSM boundary,
+//  lava-colour track paths, and a stats overlay.
+//
 //  Pipeline:
-//    1. MKMapSnapshotter captures the city's bounding-box region (dark map)
-//    2. UIGraphicsImageRenderer composites:
-//       - Map as background
-//       - Gradient dark overlay for text legibility
-//       - City name (PlusJakartaSans Bold) — top left
-//       - Country + stats row below
-//       - "TRAVA" wordmark — bottom right
+//    1. Fetch OSM boundary polygon via OSMService (with full fallback chain)
+//    2. Fall back to a bounding-box rectangle derived from city.coordinates
+//       when no OSM boundary is available
+//    3. Render entirely in CoreGraphics — no MKMapSnapshotter
 
-import MapKit
 import UIKit
 import CoreLocation
 
@@ -19,15 +18,9 @@ import CoreLocation
 
 enum SnapshotError: LocalizedError {
     case noCoordinates
-    case mapCaptureFailed(Error)
 
     var errorDescription: String? {
-        switch self {
-        case .noCoordinates:
-            return "This city has no recorded coordinates yet. Complete a tracking session first."
-        case .mapCaptureFailed(let underlying):
-            return "Map capture failed: \(underlying.localizedDescription)"
-        }
+        "This city has no recorded coordinates yet. Complete a tracking session first."
     }
 }
 
@@ -36,165 +29,348 @@ enum SnapshotError: LocalizedError {
 @MainActor
 struct CitySnapshotRenderer {
 
-    private static let canvasSize = CGSize(width: 1080, height: 1080)
-    private static let margin: CGFloat = 64
+    private static let canvasSize:  CGSize  = CGSize(width: 1080, height: 1080)
+    private static let padding:     CGFloat = 80
+    private static let leftMargin:  CGFloat = 60
 
     // MARK: - Public API
 
-    /// Renders a shareable snapshot for `city`.
-    /// `tracks` is used for future heatmap overlay; currently only `city.coordinates`
-    /// drives the map region.
     func render(city: City, tracks: [ExplorationTrack]) async throws -> UIImage {
-        guard !city.coordinates.isEmpty else {
+        // Fetch OSM boundary (uses full 4-attempt fallback chain in OSMService).
+        let rawBoundary = await OSMService.shared.fetchCityBoundary(
+            cityName:           city.cityName,
+            country:            city.country,
+            administrativeArea: city.administrativeArea.isEmpty ? nil : city.administrativeArea,
+            coordinates:        city.coordinates.first?.clCoordinate
+        )
+
+        // Resolve: OSM polygon → bounding-box fallback → hard error.
+        let boundary: [[Double]]
+        if let pts = rawBoundary, pts.count >= 3 {
+            boundary = pts
+        } else if city.coordinates.count >= 3 {
+            boundary = boundingBoxBoundary(from: city.coordinates)
+        } else {
             throw SnapshotError.noCoordinates
         }
-        let mapImage = try await captureMap(for: city)
-        return composite(map: mapImage, city: city)
+
+        return renderCard(boundary: boundary, city: city, tracks: tracks)
     }
 
-    // MARK: - Map capture
+    // MARK: - Bounding-box fallback
 
-    private func captureMap(for city: City) async throws -> UIImage {
-        let options = MKMapSnapshotter.Options()
-        options.region     = boundingRegion(for: city.coordinates)
-        options.size       = Self.canvasSize
-        options.scale      = 1.0   // 1 pt = 1 px → exact 1080×1080 px output
-        options.mapType    = .mutedStandard
-        options.showsBuildings = true
-        options.traitCollection = UITraitCollection(userInterfaceStyle: .dark)
-
-        do {
-            let snapshot = try await MKMapSnapshotter(options: options).start()
-            return snapshot.image
-        } catch {
-            throw SnapshotError.mapCaptureFailed(error)
-        }
-    }
-
-    /// Computes a padded bounding region that fits all city coordinates.
-    private func boundingRegion(for coordinates: [Coordinate]) -> MKCoordinateRegion {
-        let lats = coordinates.map(\.latitude)
-        let lons = coordinates.map(\.longitude)
+    /// Builds a closed rectangular [[lon, lat]] boundary from GPS track coordinates.
+    private func boundingBoxBoundary(from coords: [Coordinate]) -> [[Double]] {
+        let lats = coords.map(\.latitude)
+        let lons = coords.map(\.longitude)
         guard let minLat = lats.min(), let maxLat = lats.max(),
-              let minLon = lons.min(), let maxLon = lons.max() else {
-            return MKCoordinateRegion(
-                center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
-                span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-            )
-        }
-        let center = CLLocationCoordinate2D(
-            latitude:  (minLat + maxLat) / 2,
-            longitude: (minLon + maxLon) / 2
-        )
-        let span = MKCoordinateSpan(
-            latitudeDelta:  max(0.02, (maxLat - minLat) * 1.45),
-            longitudeDelta: max(0.02, (maxLon - minLon) * 1.45)
-        )
-        return MKCoordinateRegion(center: center, span: span)
+              let minLon = lons.min(), let maxLon = lons.max() else { return [] }
+        let pad = max((maxLat - minLat) * 0.15, (maxLon - minLon) * 0.15, 0.005)
+        return [
+            [minLon - pad, maxLat + pad],  // top-left
+            [maxLon + pad, maxLat + pad],  // top-right
+            [maxLon + pad, minLat - pad],  // bottom-right
+            [minLon - pad, minLat - pad],  // bottom-left
+            [minLon - pad, maxLat + pad],  // close
+        ]
     }
 
-    // MARK: - Composite
+    // MARK: - CoreGraphics render
 
-    private func composite(map: UIImage, city: City) -> UIImage {
-        let size = Self.canvasSize
-        let margin = Self.margin
+    private func renderCard(
+        boundary: [[Double]],
+        city:     City,
+        tracks:   [ExplorationTrack]
+    ) -> UIImage {
+        let size    = Self.canvasSize
+        let padding = Self.padding
+        let lm      = Self.leftMargin
 
-        // Fixed pixel output — scale 1.0 so layout units == pixels.
-        let format = UIGraphicsImageRendererFormat.default()
-        format.scale = 1.0
-        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        let format        = UIGraphicsImageRendererFormat()
+        format.scale      = 1.0    // 1 pt = 1 px → exact 1080×1080 px output
+        format.opaque     = true
 
-        return renderer.image { ctx in
-            let cgCtx = ctx.cgContext
+        return UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+            let c = ctx.cgContext
 
-            // ── 1. Map background ─────────────────────────────────────────
-            map.draw(in: CGRect(origin: .zero, size: size))
+            // ── 1. Background ─────────────────────────────────────────────
+            c.setFillColor(UIColor(hex6: "0D0D0D").cgColor)
+            c.fill(CGRect(origin: .zero, size: size))
 
-            // ── 2. Gradient overlay ───────────────────────────────────────
-            // Heavier at top (text) and bottom (wordmark), lighter in middle.
+            // ── 2. Project boundary [lon, lat] pairs → CGPoints ───────────
+            let clCoords = boundary.compactMap { pair -> CLLocationCoordinate2D? in
+                guard pair.count >= 2 else { return nil }
+                return CLLocationCoordinate2D(latitude: pair[1], longitude: pair[0])
+            }
+            let (boundaryPts, proj) = Self.project(clCoords, size: size, padding: padding)
+            guard boundaryPts.count >= 3 else { return }
+
+            // ── 3. Boundary closed path ───────────────────────────────────
+            let boundaryPath = CGMutablePath()
+            boundaryPath.move(to: boundaryPts[0])
+            boundaryPts.dropFirst().forEach { boundaryPath.addLine(to: $0) }
+            boundaryPath.closeSubpath()
+
+            // ── 4. City fill ──────────────────────────────────────────────
+            c.saveGState()
+            c.addPath(boundaryPath)
+            c.setFillColor(UIColor(hex6: "1A1A2E").cgColor)
+            c.fillPath()
+            c.restoreGState()
+
+            // ── 5. Boundary glow (wide dim + narrow bright) ───────────────
+            let glowColor = UIColor(hex6: "adc6ff")
+
+            c.saveGState()
+            c.addPath(boundaryPath)
+            c.setStrokeColor(glowColor.withAlphaComponent(0.20).cgColor)
+            c.setLineWidth(4)
+            c.strokePath()
+            c.restoreGState()
+
+            c.saveGState()
+            c.addPath(boundaryPath)
+            c.setStrokeColor(glowColor.withAlphaComponent(0.70).cgColor)
+            c.setLineWidth(2)
+            c.strokePath()
+            c.restoreGState()
+
+            // ── 6. Track paths (clipped to boundary, 3-pass lava glow) ───
+            if !tracks.isEmpty {
+                c.saveGState()
+                c.addPath(boundaryPath)
+                c.clip()
+
+                for track in tracks {
+                    guard track.coordinates.count >= 2 else { continue }
+
+                    // Subsample long tracks for render performance.
+                    let raw    = track.coordinates
+                    let stride = max(1, raw.count / 400)
+                    let sample = stride > 1
+                        ? raw.enumerated().compactMap { $0.offset % stride == 0 ? $0.element : nil }
+                        : raw
+                    guard sample.count >= 2 else { continue }
+
+                    let trackPts = sample.map {
+                        proj.project(CLLocationCoordinate2D(latitude: $0.latitude,
+                                                            longitude: $0.longitude))
+                    }
+                    let trackPath = CGMutablePath()
+                    trackPath.move(to: trackPts[0])
+                    trackPts.dropFirst().forEach { trackPath.addLine(to: $0) }
+
+                    let passes: [(width: CGFloat, hex: String, alpha: CGFloat)] = [
+                        (8, "FF4500", 0.25),   // outer glow
+                        (5, "FF6B35", 0.50),   // mid
+                        (2, "FFE4A0", 0.90),   // bright core
+                    ]
+                    for pass in passes {
+                        c.saveGState()
+                        c.addPath(trackPath)
+                        c.setStrokeColor(UIColor(hex6: pass.hex).withAlphaComponent(pass.alpha).cgColor)
+                        c.setLineWidth(pass.width)
+                        c.setLineCap(.round)
+                        c.setLineJoin(.round)
+                        c.strokePath()
+                        c.restoreGState()
+                    }
+                }
+
+                c.restoreGState()
+            }
+
+            // ── 7. Bottom gradient (transparent → #0D0D0D at 85%) ─────────
+            let gradStartY: CGFloat = size.height - 350
             let gradColors = [
-                UIColor.black.withAlphaComponent(0.60).cgColor,   // top
-                UIColor.black.withAlphaComponent(0.12).cgColor,   // mid
-                UIColor.black.withAlphaComponent(0.52).cgColor,   // bottom
+                UIColor(hex6: "0D0D0D").withAlphaComponent(0.00).cgColor,
+                UIColor(hex6: "0D0D0D").withAlphaComponent(0.85).cgColor,
             ] as CFArray
-            let gradLocations: [CGFloat] = [0.0, 0.5, 1.0]
             if let gradient = CGGradient(
                 colorsSpace: CGColorSpaceCreateDeviceRGB(),
                 colors: gradColors,
-                locations: gradLocations
+                locations: [0.0, 1.0]
             ) {
-                // In UIKit coords: y=0 is TOP, y=size.height is BOTTOM.
-                // drawLinearGradient: start → end maps location 0.0 → 1.0.
-                // We want location 0.0 at top → start = (0,0).
-                cgCtx.drawLinearGradient(
+                c.drawLinearGradient(
                     gradient,
-                    start: CGPoint(x: 0, y: 0),
+                    start: CGPoint(x: 0, y: gradStartY),
                     end:   CGPoint(x: 0, y: size.height),
                     options: []
                 )
             }
 
-            // ── 3. Typography setup ───────────────────────────────────────
-            let titleFont   = UIFont(name: "PlusJakartaSans-Bold",   size: 88) ?? .boldSystemFont(ofSize: 88)
-            let countryFont = UIFont(name: "Inter-Medium",           size: 30) ?? .systemFont(ofSize: 30, weight: .medium)
-            let statsFont   = UIFont(name: "Inter-Regular",          size: 26) ?? .systemFont(ofSize: 26)
-            let markFont    = UIFont(name: "PlusJakartaSans-Bold",   size: 22) ?? .boldSystemFont(ofSize: 22)
+            // ── 8. Stats overlay ──────────────────────────────────────────
 
-            let maxWidth = size.width - margin * 2
-
-            // Truncate long city names to one line
-            let titlePS = NSMutableParagraphStyle()
-            titlePS.lineBreakMode = .byTruncatingTail
-
-            let titleAttrs: [NSAttributedString.Key: Any] = [
-                .font:           titleFont,
-                .foregroundColor: UIColor.white,
-                .paragraphStyle: titlePS,
-            ]
-
-            // ── 4. City name (top-left) ───────────────────────────────────
-            let topY: CGFloat = 72
-            let titleHeight  = titleFont.lineHeight
-            let titleRect    = CGRect(x: margin, y: topY, width: maxWidth, height: titleHeight + 4)
-            (city.cityName.uppercased() as NSString).draw(in: titleRect, withAttributes: titleAttrs)
-
-            // ── 5. Country ────────────────────────────────────────────────
+            // Country label — 32 pt, #adc6ff, tracked caps
+            let countryFont  = UIFont(name: "Inter-Medium", size: 32)
+                ?? .systemFont(ofSize: 32, weight: .medium)
             let countryAttrs: [NSAttributedString.Key: Any] = [
-                .font:           countryFont,
-                .foregroundColor: UIColor.white.withAlphaComponent(0.65),
-                .kern:           2.5,
+                .font:            countryFont,
+                .foregroundColor: glowColor,
+                .kern:            3.0,
             ]
-            let countryY    = topY + titleHeight + 10
-            let countryHeight = countryFont.lineHeight
-            (city.country.uppercased() as NSString).draw(
-                at: CGPoint(x: margin, y: countryY),
-                withAttributes: countryAttrs
-            )
+            (city.country.uppercased() as NSString)
+                .draw(at: CGPoint(x: lm, y: 720), withAttributes: countryAttrs)
 
-            // ── 6. Stats row ──────────────────────────────────────────────
+            // City name — 96 pt bold, white, single line with tail truncation
+            let cityFont = UIFont(name: "PlusJakartaSans-Bold", size: 96)
+                ?? .boldSystemFont(ofSize: 96)
+            let cityPS   = NSMutableParagraphStyle()
+            cityPS.lineBreakMode = .byTruncatingTail
+            let cityAttrs: [NSAttributedString.Key: Any] = [
+                .font:            cityFont,
+                .foregroundColor: UIColor.white,
+                .paragraphStyle:  cityPS,
+            ]
+            let cityRect = CGRect(x: lm, y: 760, width: size.width - lm * 2, height: 120)
+            (city.cityName as NSString).draw(in: cityRect, withAttributes: cityAttrs)
+
+            // Stats row — 28 pt, #adc6ff at 80 %, miles not km
+            let statsFont = UIFont(name: "Inter-Regular", size: 28)
+                ?? .systemFont(ofSize: 28)
+            let distMi    = city.totalDistanceKm * 0.621371
+            let distStr   = distMi < 10
+                ? String(format: "%.1f mi", distMi)
+                : String(format: "%.0f mi", distMi)
             let coverage  = Int((city.coveragePercent * 100).rounded())
             let sessions  = city.totalSessions
-            let statsText = "\(String(format: "%.1f", city.totalDistanceKm)) km  ·  \(sessions) session\(sessions == 1 ? "" : "s")  ·  \(coverage)% explored"
+            let statsText = "\(distStr) · \(sessions) session\(sessions == 1 ? "" : "s") · \(coverage)% explored"
             let statsAttrs: [NSAttributedString.Key: Any] = [
-                .font:           statsFont,
-                .foregroundColor: UIColor.white.withAlphaComponent(0.80),
+                .font:            statsFont,
+                .foregroundColor: glowColor.withAlphaComponent(0.80),
             ]
-            let statsY = countryY + countryHeight + 20
-            (statsText as NSString).draw(at: CGPoint(x: margin, y: statsY), withAttributes: statsAttrs)
+            (statsText as NSString).draw(at: CGPoint(x: lm, y: 880), withAttributes: statsAttrs)
 
-            // ── 7. TRAVA wordmark (bottom-right) ──────────────────────────
-            let wordmark = "TRAVA"
+            // TRAVA wordmark — 36 pt, white at 45 %, right-aligned to x=980
+            let markFont = UIFont(name: "PlusJakartaSans-Bold", size: 36)
+                ?? .boldSystemFont(ofSize: 36)
+            let markText = "TRAVA"
             let markAttrs: [NSAttributedString.Key: Any] = [
-                .font:           markFont,
-                .foregroundColor: UIColor.white.withAlphaComponent(0.40),
-                .kern:           5.0,
+                .font:            markFont,
+                .foregroundColor: UIColor.white.withAlphaComponent(0.45),
+                .kern:            4.0,
             ]
-            let markSize  = (wordmark as NSString).size(withAttributes: markAttrs)
-            let markPoint = CGPoint(
-                x: size.width  - margin - markSize.width,
-                y: size.height - margin - markSize.height
+            let markSize = (markText as NSString).size(withAttributes: markAttrs)
+            (markText as NSString).draw(
+                at: CGPoint(x: 980 - markSize.width, y: 1020),
+                withAttributes: markAttrs
             )
-            (wordmark as NSString).draw(at: markPoint, withAttributes: markAttrs)
         }
+    }
+
+    // MARK: - Two-pass Mercator projection
+
+    // Identical algorithm to CityCardRenderer.Projection — kept local so
+    // CitySnapshotRenderer has no cross-file dependency on that type.
+    //
+    // Pass 1 maps geographic coords to a preliminary pixel space using the
+    // geographic span.  Pass 2 measures the actual pixel bounding box and
+    // re-centres/re-scales to fit exactly within the padded canvas.
+
+    private struct Projection {
+        let minLon:     Double
+        let minMY:      Double
+        let p1Scale:    Double
+        let padding:    CGFloat
+        let size:       CGSize
+        let pixMinX:    Double
+        let pixMinY:    Double
+        let p2Scale:    Double
+        let centerOffX: Double
+        let centerOffY: Double
+
+        func project(_ coord: CLLocationCoordinate2D) -> CGPoint {
+            let latRad = coord.latitude * .pi / 180
+            let my     = log(tan(.pi / 4 + latRad / 2)) * 180 / .pi
+            let rawX   = (coord.longitude - minLon) * p1Scale + Double(padding)
+            // Mercator Y increases northward; CGContext Y increases downward → flip.
+            let rawY   = Double(size.height) - ((my - minMY) * p1Scale + Double(padding))
+            return CGPoint(
+                x: (rawX - pixMinX) * p2Scale + centerOffX,
+                y: (rawY - pixMinY) * p2Scale + centerOffY
+            )
+        }
+    }
+
+    private static func project(
+        _ coords: [CLLocationCoordinate2D],
+        size:     CGSize,
+        padding:  CGFloat
+    ) -> ([CGPoint], Projection) {
+        let lons = coords.map { $0.longitude }
+        let mys  = coords.map { c -> Double in
+            let r = c.latitude * .pi / 180
+            return log(tan(.pi / 4 + r / 2)) * 180 / .pi
+        }
+
+        guard
+            let minLon = lons.min(), let maxLon = lons.max(),
+            let minMY  = mys.min(),  let maxMY  = mys.max()
+        else {
+            let fallback = Projection(
+                minLon: 0, minMY: 0, p1Scale: 1, padding: padding, size: size,
+                pixMinX: 0, pixMinY: 0, p2Scale: 1,
+                centerOffX: Double(padding), centerOffY: Double(padding)
+            )
+            return ([], fallback)
+        }
+
+        // Pass 1 — preliminary scale from geographic span
+        let availW  = Double(size.width)  - 2 * Double(padding)
+        let availH  = Double(size.height) - 2 * Double(padding)
+        let spanLon = max(maxLon - minLon, 1e-9)
+        let spanMY  = max(maxMY  - minMY,  1e-9)
+        let p1Scale = min(availW / spanLon, availH / spanMY)
+
+        let rawPts: [CGPoint] = zip(lons, mys).map { lon, my in
+            CGPoint(
+                x: (lon - minLon) * p1Scale + Double(padding),
+                y: Double(size.height) - ((my - minMY) * p1Scale + Double(padding))
+            )
+        }
+
+        // Pass 2 — measure pixel bounding box, re-fit to padded canvas
+        let pixMinX = rawPts.map { $0.x }.min()!
+        let pixMaxX = rawPts.map { $0.x }.max()!
+        let pixMinY = rawPts.map { $0.y }.min()!
+        let pixMaxY = rawPts.map { $0.y }.max()!
+        let pixW    = max(pixMaxX - pixMinX, 1)
+        let pixH    = max(pixMaxY - pixMinY, 1)
+
+        let targetW = Double(size.width)  - 2 * Double(padding)
+        let targetH = Double(size.height) - 2 * Double(padding)
+        let p2Scale = min(targetW / pixW, targetH / pixH)
+
+        let scaledW    = pixW * p2Scale
+        let scaledH    = pixH * p2Scale
+        let centerOffX = (Double(size.width)  - scaledW) / 2
+        let centerOffY = (Double(size.height) - scaledH) / 2
+
+        let proj = Projection(
+            minLon: minLon, minMY: minMY, p1Scale: p1Scale, padding: padding, size: size,
+            pixMinX: pixMinX, pixMinY: pixMinY, p2Scale: p2Scale,
+            centerOffX: centerOffX, centerOffY: centerOffY
+        )
+        return (rawPts.map { raw in
+            CGPoint(
+                x: (raw.x - pixMinX) * p2Scale + centerOffX,
+                y: (raw.y - pixMinY) * p2Scale + centerOffY
+            )
+        }, proj)
+    }
+}
+
+// MARK: - UIColor hex convenience (private to this file)
+
+private extension UIColor {
+    /// Initialise from a 6-character hex string (no leading `#`).
+    convenience init(hex6: String) {
+        let v = UInt64(hex6, radix: 16) ?? 0
+        self.init(
+            red:   CGFloat((v >> 16) & 0xFF) / 255,
+            green: CGFloat((v >>  8) & 0xFF) / 255,
+            blue:  CGFloat( v        & 0xFF) / 255,
+            alpha: 1
+        )
     }
 }
