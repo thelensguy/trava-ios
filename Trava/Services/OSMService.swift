@@ -47,6 +47,7 @@ actor OSMService {
     func fetchCityBoundary(
         cityName:           String,
         country:            String,
+        countryCode:        String = "",
         administrativeArea: String? = nil,
         coordinates:        CLLocationCoordinate2D? = nil
     ) async -> [[Double]]? {
@@ -57,19 +58,22 @@ actor OSMService {
 
         // ── Attempt 1: structured city= query ───────────────────────────────
         await enforceRateLimit(minInterval: 1.0)
-        if let coords = await fetchByCityParam(cityName: cityName, country: country),
+        if let coords = await fetchByCityParam(cityName: cityName, country: country, countryCode: countryCode),
            coords.count >= 3 {
             await saveToCache(cityName: cityName, country: country, coords: coords)
             return coords
         }
 
         // ── Attempt 2: free-text q= with admin area + country ───────────────
+        // Use ISO code in q= when available ("San Francisco, California, us")
+        // — more precise than the full country name for Nominatim free-text.
         await enforceRateLimit(minInterval: 0.5)
+        let countryPart = countryCode.isEmpty ? country : countryCode
         let q2: String = {
             if let admin = administrativeArea, !admin.isEmpty {
-                return "\(cityName), \(admin), \(country)"
+                return "\(cityName), \(admin), \(countryPart)"
             }
-            return "\(cityName), \(country)"
+            return "\(cityName), \(countryPart)"
         }()
         if let coords = await fetchByQ(q2), coords.count >= 3 {
             await saveToCache(cityName: cityName, country: country, coords: coords)
@@ -121,14 +125,18 @@ actor OSMService {
 
     // MARK: - Fetch helpers
 
-    private func fetchByCityParam(cityName: String, country: String) async -> [[Double]]? {
+    private func fetchByCityParam(cityName: String, country: String, countryCode: String) async -> [[Double]]? {
         var components = URLComponents(string: "https://nominatim.openstreetmap.org/search")!
+        // countrycodes= (ISO 3166-1 alpha-2) is more reliable than country= (full name).
+        let countryItem = countryCode.isEmpty
+            ? URLQueryItem(name: "country",      value: country)
+            : URLQueryItem(name: "countrycodes", value: countryCode)
         components.queryItems = [
-            URLQueryItem(name: "city",             value: cityName),
-            URLQueryItem(name: "country",          value: country),
-            URLQueryItem(name: "polygon_geojson",  value: "1"),
-            URLQueryItem(name: "format",           value: "geojson"),
-            URLQueryItem(name: "limit",            value: "1"),
+            URLQueryItem(name: "city",            value: cityName),
+            countryItem,
+            URLQueryItem(name: "polygon_geojson", value: "1"),
+            URLQueryItem(name: "format",          value: "geojson"),
+            URLQueryItem(name: "limit",           value: "1"),
         ]
         return await fetchAndParseCollection(components)
     }

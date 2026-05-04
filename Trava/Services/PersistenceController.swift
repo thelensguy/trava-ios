@@ -93,6 +93,7 @@ final class PersistenceController {
             attr("userId",              .stringAttributeType),
             attr("cityName",            .stringAttributeType),
             attr("country",             .stringAttributeType,    defaultValue: ""),
+            attr("countryCode",         .stringAttributeType,    defaultValue: ""),
             attr("administrativeArea",  .stringAttributeType,    defaultValue: ""),
             attr("firstVisitedAt",      .dateAttributeType),
             attr("lastVisitedAt",       .dateAttributeType),

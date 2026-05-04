@@ -132,6 +132,7 @@ final class CityService: ObservableObject {
         struct CityRun {
             let cityName:           String
             let country:            String
+            let countryCode:        String
             let administrativeArea: String
             var firstCoordIdx:      Int
             var lastCoordIdx:       Int
@@ -147,6 +148,7 @@ final class CityService: ObservableObject {
                 runs.append(CityRun(
                     cityName:           s.cityName,
                     country:            s.country,
+                    countryCode:        s.countryCode,
                     administrativeArea: s.administrativeArea,
                     firstCoordIdx:      s.coordIndex,
                     lastCoordIdx:       s.coordIndex
@@ -180,6 +182,7 @@ final class CityService: ObservableObject {
             if let city = try? await saveOrUpdateCity(
                 cityName:           run.cityName,
                 country:            run.country,
+                countryCode:        run.countryCode,
                 administrativeArea: run.administrativeArea,
                 track:              subTrack,
                 userId:             userId
@@ -209,6 +212,7 @@ final class CityService: ObservableObject {
     func saveOrUpdateCity(
         cityName:           String,
         country:            String,
+        countryCode:        String = "",
         administrativeArea: String = "",
         track:              ExplorationTrack,
         userId:             String
@@ -258,6 +262,7 @@ final class CityService: ObservableObject {
                                 userId:             userId,
                                 cityName:           cityName,
                                 country:            country,
+                                countryCode:        countryCode,
                                 administrativeArea: administrativeArea,
                                 coordinates:        track.coordinates,
                                 totalDistanceKm:    track.distanceKm,
@@ -330,10 +335,11 @@ final class CityService: ObservableObject {
 
         // Warm OSM boundary cache in the background.
         // Capture shared instance here (on @MainActor) before entering the detached task.
-        let _cityName   = cityName
-        let _country    = country
-        let _adminArea  = administrativeArea
-        let _firstCoord = track.coordinates.first.map {
+        let _cityName    = cityName
+        let _country     = country
+        let _countryCode = countryCode
+        let _adminArea   = administrativeArea
+        let _firstCoord  = track.coordinates.first.map {
             CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
         }
         let _osmService = OSMService.shared
@@ -341,6 +347,7 @@ final class CityService: ObservableObject {
             _ = await _osmService.fetchCityBoundary(
                 cityName:           _cityName,
                 country:            _country,
+                countryCode:        _countryCode,
                 administrativeArea: _adminArea.isEmpty ? nil : _adminArea,
                 coordinates:        _firstCoord
             )
@@ -482,6 +489,7 @@ final class CityService: ObservableObject {
         let coordIndex:         Int
         let cityName:           String
         let country:            String
+        let countryCode:        String
         let administrativeArea: String
     }
 
@@ -507,12 +515,13 @@ final class CityService: ObservableObject {
             let c     = coords[idx]
             let coord = CLLocationCoordinate2D(latitude: c.latitude, longitude: c.longitude)
             guard let item = await reverseGeocode(coordinate: coord) else { continue }
-            let rawCity   = item.addressRepresentations?.cityName ?? fallbackCityName
-            let city      = rawCity.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? rawCity
-            let country   = item.addressRepresentations?.regionName ?? "Unknown"
-            let adminArea = item.placemark.administrativeArea ?? ""
+            let rawCity     = item.addressRepresentations?.cityName ?? fallbackCityName
+            let city        = rawCity.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? rawCity
+            let country     = item.addressRepresentations?.regionName ?? "Unknown"
+            let countryCode = item.placemark.isoCountryCode?.lowercased() ?? ""
+            let adminArea   = item.placemark.administrativeArea ?? ""
             guard city != "Unknown City", !city.isEmpty else { continue }
-            results.append(GeoSample(coordIndex: idx, cityName: city, country: country, administrativeArea: adminArea))
+            results.append(GeoSample(coordIndex: idx, cityName: city, country: country, countryCode: countryCode, administrativeArea: adminArea))
         }
         return results
     }

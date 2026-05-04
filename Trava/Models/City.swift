@@ -19,6 +19,7 @@ struct City: Codable, Identifiable {
     var userId: String
     var cityName: String
     var country: String
+    var countryCode: String          // ISO 3166-1 alpha-2 lowercase, e.g. "us", "jp" — "" if unknown
     var administrativeArea: String   // state / province — "" for non-US or unknown
     var firstVisitedAt: Date
     var lastVisitedAt: Date
@@ -39,6 +40,7 @@ struct City: Codable, Identifiable {
         userId: String,
         cityName: String,
         country: String,
+        countryCode: String = "",
         administrativeArea: String = "",
         firstVisitedAt: Date = Date(),
         lastVisitedAt: Date = Date(),
@@ -53,6 +55,7 @@ struct City: Codable, Identifiable {
         self.userId              = userId
         self.cityName            = cityName
         self.country             = country
+        self.countryCode         = countryCode
         self.administrativeArea  = administrativeArea
         self.firstVisitedAt      = firstVisitedAt
         self.lastVisitedAt   = lastVisitedAt
@@ -72,6 +75,7 @@ struct City: Codable, Identifiable {
             "userId":              userId,
             "cityName":            cityName,
             "country":             country,
+            "countryCode":         countryCode,
             "administrativeArea":  administrativeArea,
             "firstVisitedAt":      Timestamp(date: firstVisitedAt),
             "lastVisitedAt":   Timestamp(date: lastVisitedAt),
@@ -92,6 +96,7 @@ final class CityEntity: NSManagedObject {
     @NSManaged var userId: String
     @NSManaged var cityName: String
     @NSManaged var country: String
+    @NSManaged var countryCode: String
     @NSManaged var administrativeArea: String
     @NSManaged var firstVisitedAt: Date
     @NSManaged var lastVisitedAt: Date
@@ -109,6 +114,7 @@ final class CityEntity: NSManagedObject {
             userId:             userId,
             cityName:           cityName,
             country:            country,
+            countryCode:        countryCode,
             administrativeArea: administrativeArea,
             firstVisitedAt:     firstVisitedAt,
             lastVisitedAt:   lastVisitedAt,
@@ -125,6 +131,7 @@ final class CityEntity: NSManagedObject {
         userId              = city.userId
         cityName            = city.cityName
         country             = city.country
+        countryCode         = city.countryCode
         administrativeArea  = city.administrativeArea
         firstVisitedAt      = city.firstVisitedAt
         lastVisitedAt   = city.lastVisitedAt
