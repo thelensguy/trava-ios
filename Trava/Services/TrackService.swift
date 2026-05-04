@@ -130,6 +130,26 @@ final class TrackService: ObservableObject {
         }
     }
 
+    // MARK: - Delete tracks
+
+    /// Deletes tracks from CoreData and Firestore (non-guest only).
+    func deleteTracks(trackIds: Set<String>, userId: String) async throws {
+        let context = persistence.container.newBackgroundContext()
+        try await context.perform {
+            let req = NSFetchRequest<TrackEntity>(entityName: "TrackEntity")
+            req.predicate = NSPredicate(
+                format: "trackId IN %@ AND userId == %@", Array(trackIds), userId
+            )
+            for entity in try context.fetch(req) { context.delete(entity) }
+            try context.save()
+        }
+        guard userId != UserProfile.guestUserId else { return }
+        let tracksRef = db.collection("users").document(userId).collection("tracks")
+        for trackId in trackIds {
+            try? await tracksRef.document(trackId).delete()
+        }
+    }
+
     // MARK: - Reverse-geocode city name
 
     /// Returns the city name for a coordinate, or "Unknown City" on failure.

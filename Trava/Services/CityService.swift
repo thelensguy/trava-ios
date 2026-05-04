@@ -356,6 +356,102 @@ final class CityService: ObservableObject {
         return city
     }
 
+    // MARK: - Track deletion + city stat recalculation
+
+    /// Recomputes a city's stats from its remaining tracks after one or more tracks are deleted.
+    /// Deletes the city entirely when no tracks remain.
+    /// Returns `true` when the city was deleted so callers can pop navigation.
+    @discardableResult
+    func recalculateCityStats(cityName: String, userId: String) async -> Bool {
+        let bgContext = persistence.container.newBackgroundContext()
+        bgContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+
+        struct StatsResult: @unchecked Sendable {
+            let cityId:  String
+            let deleted: Bool
+            let city:    City?
+        }
+
+        let result: StatsResult = await bgContext.perform {
+            // Remaining tracks for this city
+            let trackReq = NSFetchRequest<TrackEntity>(entityName: "TrackEntity")
+            trackReq.predicate = NSPredicate(
+                format: "cityName ==[c] %@ AND userId == %@", cityName, userId
+            )
+            let remaining = ((try? bgContext.fetch(trackReq)) ?? [])
+                .compactMap { $0.toExplorationTrack() }
+
+            // City entity
+            let cityReq = NSFetchRequest<CityEntity>(entityName: "CityEntity")
+            cityReq.predicate = NSPredicate(
+                format: "cityName ==[c] %@ AND userId == %@", cityName, userId
+            )
+            cityReq.fetchLimit = 1
+            guard let cityEntity = (try? bgContext.fetch(cityReq))?.first else {
+                return StatsResult(cityId: "", deleted: true, city: nil)
+            }
+            let cId = cityEntity.cityId
+
+            if remaining.isEmpty {
+                bgContext.delete(cityEntity)
+                try? bgContext.save()
+                return StatsResult(cityId: cId, deleted: true, city: nil)
+            }
+
+            let newDist     = remaining.reduce(0.0) { $0 + $1.distanceKm }
+            let allCoords   = remaining.flatMap { $0.coordinates }
+            let newCoverage = CityService.calculateCoverage(coordinates: allCoords)
+
+            cityEntity.totalDistanceKm = newDist
+            cityEntity.totalSessions   = Int32(remaining.count)
+            cityEntity.coveragePercent = newCoverage
+            cityEntity.coordinatesData = (try? JSONEncoder().encode(allCoords)) ?? cityEntity.coordinatesData
+            cityEntity.isSynced        = false
+            try? bgContext.save()
+            return StatsResult(cityId: cId, deleted: false, city: cityEntity.toCity())
+        }
+
+        // Remove deleted city from in-memory cache
+        if result.deleted {
+            let prefix = "\(cityName.lowercased())|"
+            let suffix = "|\(userId)"
+            writeQueue.async { [weak self] in
+                self?.cityCache = (self?.cityCache ?? [:]).filter { key, _ in
+                    !(key.hasPrefix(prefix) && key.hasSuffix(suffix))
+                }
+            }
+        }
+
+        // Firestore sync
+        if userId != UserProfile.guestUserId {
+            let citiesRef = db.collection("users").document(userId).collection("cities")
+            if result.deleted, !result.cityId.isEmpty {
+                try? await citiesRef.document(result.cityId).delete()
+            } else if let city = result.city {
+                try? await citiesRef.document(city.cityId).setData(city.firestoreData(), merge: true)
+            }
+        }
+
+        await refresh(userId: userId)
+
+        // Re-derive UserProfile totals from all remaining cities
+        if userId != UserProfile.guestUserId {
+            await syncUserProfileStats(userId: userId)
+        }
+
+        return result.deleted
+    }
+
+    private func syncUserProfileStats(userId: String) async {
+        let allCities  = (try? await loadCities(userId: userId)) ?? []
+        let totalDist  = allCities.reduce(0.0) { $0 + $1.totalDistanceKm }
+        let totalCount = allCities.count
+        try? await db.collection("users").document(userId).setData([
+            "totalDistanceKm":     totalDist,
+            "totalCitiesExplored": totalCount,
+        ], merge: true)
+    }
+
     // MARK: - One-time startup deduplication
 
     /// Merges any duplicate CityEntity records for userId.  Safe to call on every

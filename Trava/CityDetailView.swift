@@ -14,6 +14,7 @@ struct CityDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var trackService: TrackService
+    @EnvironmentObject var cityService:  CityService
     @EnvironmentObject var auth:         AuthViewModel
 
     @AppStorage(DistanceUnit.storageKey) private var distanceUnitRaw: String = DistanceUnit.km.rawValue
@@ -28,6 +29,12 @@ struct CityDetailView: View {
     @State private var showShare    = false
     @State private var shareError:  String?
 
+    // Edit mode
+    @State private var isEditMode          = false
+    @State private var selectedTrackIds:   Set<String> = []
+    @State private var trackPendingDelete: ExplorationTrack? = nil
+    @State private var showBulkDeleteAlert = false
+
     private let renderer = CitySnapshotRenderer()
 
     private var coveragePercent: Int { Int((city.coveragePercent * 100).rounded()) }
@@ -40,6 +47,9 @@ struct CityDetailView: View {
             }
         }
         .background(Color.dsBackground.ignoresSafeArea())
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            bulkDeleteButton
+        }
         .onAppear { Task { await loadData() } }
         .sheet(isPresented: $showShare) {
             if let img = shareImage {
@@ -53,6 +63,29 @@ struct CityDetailView: View {
             Button("OK", role: .cancel) { shareError = nil }
         } message: {
             Text(shareError ?? "")
+        }
+        .alert("Delete Session?", isPresented: Binding(
+            get: { trackPendingDelete != nil },
+            set: { if !$0 { trackPendingDelete = nil } }
+        )) {
+            Button("Delete", role: .destructive) {
+                if let track = trackPendingDelete {
+                    trackPendingDelete = nil
+                    deleteTrack(track)
+                }
+            }
+            Button("Cancel", role: .cancel) { trackPendingDelete = nil }
+        } message: {
+            Text("This cannot be undone.")
+        }
+        .alert(
+            "Delete \(selectedTrackIds.count) Session\(selectedTrackIds.count == 1 ? "" : "s")?",
+            isPresented: $showBulkDeleteAlert
+        ) {
+            Button("Delete", role: .destructive) { deleteSelectedTracks() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This cannot be undone.")
         }
     }
 
@@ -129,6 +162,26 @@ struct CityDetailView: View {
                     .clipShape(Circle())
             }
             .padding(16)
+        }
+        // Edit / Done button — top-right (only when sessions exist)
+        .overlay(alignment: .topTrailing) {
+            if !tracks.isEmpty {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isEditMode.toggle()
+                        if !isEditMode { selectedTrackIds = [] }
+                    }
+                } label: {
+                    Text(isEditMode ? "Done" : "Edit")
+                        .font(.custom("Inter-Medium", size: 14))
+                        .foregroundColor(Color.dsOnSurface)
+                        .padding(.horizontal, 12)
+                        .frame(height: 36)
+                        .background(Color.dsSurfaceContainerHigh.opacity(0.85))
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                }
+                .padding(16)
+            }
         }
     }
 
@@ -229,14 +282,39 @@ struct CityDetailView: View {
 
             ForEach(tracks) { track in
                 trackRow(track)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        guard isEditMode else { return }
+                        if selectedTrackIds.contains(track.trackId) {
+                            selectedTrackIds.remove(track.trackId)
+                        } else {
+                            selectedTrackIds.insert(track.trackId)
+                        }
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            trackPendingDelete = track
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
             }
         }
     }
 
     private func trackRow(_ track: ExplorationTrack) -> some View {
         let incomplete = isIncomplete(track)
+        let isSelected = selectedTrackIds.contains(track.trackId)
 
         return HStack(spacing: 14) {
+            // Checkbox — visible in edit mode only
+            if isEditMode {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 22))
+                    .foregroundColor(isSelected ? Color.dsPrimary : Color.dsOnSurfaceVariant.opacity(0.4))
+                    .animation(.easeInOut(duration: 0.15), value: isSelected)
+            }
+
             // Date badge
             VStack(spacing: 1) {
                 Text(track.startedAt, format: .dateTime.day())
@@ -272,18 +350,48 @@ struct CityDetailView: View {
 
             Spacer()
 
-            // Sync status indicator
-            Image(systemName: track.isSynced ? "checkmark.icloud" : "icloud.slash")
-                .font(.system(size: 13))
-                .foregroundColor(
-                    track.isSynced
-                        ? Color.dsPrimary.opacity(0.55)
-                        : Color.dsOnSurfaceVariant.opacity(0.35)
-                )
+            // Sync status indicator (hidden in edit mode)
+            if !isEditMode {
+                Image(systemName: track.isSynced ? "checkmark.icloud" : "icloud.slash")
+                    .font(.system(size: 13))
+                    .foregroundColor(
+                        track.isSynced
+                            ? Color.dsPrimary.opacity(0.55)
+                            : Color.dsOnSurfaceVariant.opacity(0.35)
+                    )
+            }
         }
         .padding(14)
-        .background(Color.dsSurfaceContainerLow)
+        .background(
+            isSelected && isEditMode
+                ? Color.dsPrimary.opacity(0.08)
+                : Color.dsSurfaceContainerLow
+        )
         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.md))
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
+    }
+
+    // MARK: - Bulk Delete Button (bottom safe area inset)
+
+    @ViewBuilder
+    private var bulkDeleteButton: some View {
+        if isEditMode && !selectedTrackIds.isEmpty {
+            Button {
+                showBulkDeleteAlert = true
+            } label: {
+                Text("Delete Selected (\(selectedTrackIds.count))")
+                    .font(.dsLabelLg())
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+                    .background(Color.red)
+                    .clipShape(RoundedRectangle(cornerRadius: DS.Radius.md))
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 12)
+            .background(Color.dsBackground)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
     }
 
     // MARK: - Empty State
@@ -328,7 +436,7 @@ struct CityDetailView: View {
         // Hero image
         if heroImage == nil && !heroLoading {
             heroLoading = true
-            defer { heroLoading = false }   // always clears spinner, even on early return
+            defer { heroLoading = false }
 
             let name       = city.cityName
             let country    = city.country
@@ -344,6 +452,7 @@ struct CityDetailView: View {
             let boundary = await OSMService.shared.fetchCityBoundary(
                 cityName:           name,
                 country:            country,
+                countryCode:        city.countryCode,
                 administrativeArea: adminArea.isEmpty ? nil : adminArea,
                 coordinates:        centerCoord
             )
@@ -385,6 +494,43 @@ struct CityDetailView: View {
             isRendering = false
         }
     }
+
+    // MARK: - Delete actions
+
+    private func deleteTrack(_ track: ExplorationTrack) {
+        Task {
+            let userId = auth.currentUserId ?? UserProfile.guestUserId
+            try? await trackService.deleteTracks(trackIds: [track.trackId], userId: userId)
+            let cityDeleted = await cityService.recalculateCityStats(
+                cityName: city.cityName, userId: userId
+            )
+            if cityDeleted {
+                dismiss()
+            } else {
+                let all = (try? await trackService.loadLocalTracks(userId: userId)) ?? []
+                tracks = all.filter { $0.cityName == city.cityName }
+            }
+        }
+    }
+
+    private func deleteSelectedTracks() {
+        let toDelete = selectedTrackIds
+        Task {
+            let userId = auth.currentUserId ?? UserProfile.guestUserId
+            try? await trackService.deleteTracks(trackIds: toDelete, userId: userId)
+            let cityDeleted = await cityService.recalculateCityStats(
+                cityName: city.cityName, userId: userId
+            )
+            selectedTrackIds = []
+            isEditMode = false
+            if cityDeleted {
+                dismiss()
+            } else {
+                let all = (try? await trackService.loadLocalTracks(userId: userId)) ?? []
+                tracks = all.filter { $0.cityName == city.cityName }
+            }
+        }
+    }
 }
 
 // MARK: - Activity Sheet
@@ -410,6 +556,7 @@ private struct ActivityView: UIViewControllerRepresentable {
             coveragePercent: 0.31
         ))
         .environmentObject(TrackService())
+        .environmentObject(CityService())
         .environmentObject(AuthViewModel())
     }
     .safeAreaInset(edge: .top,    spacing: 0) { DSNavBar() }
