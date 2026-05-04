@@ -280,25 +280,33 @@ struct CityDetailView: View {
                 .kerning(1.8)
                 .textCase(.uppercase)
 
-            ForEach(tracks) { track in
-                trackRow(track)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        guard isEditMode else { return }
-                        if selectedTrackIds.contains(track.trackId) {
-                            selectedTrackIds.remove(track.trackId)
-                        } else {
-                            selectedTrackIds.insert(track.trackId)
+            List {
+                ForEach(tracks) { track in
+                    trackRow(track)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            guard isEditMode else { return }
+                            if selectedTrackIds.contains(track.trackId) {
+                                selectedTrackIds.remove(track.trackId)
+                            } else {
+                                selectedTrackIds.insert(track.trackId)
+                            }
                         }
-                    }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) {
-                            trackPendingDelete = track
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                trackPendingDelete = track
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
                         }
-                    }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                }
             }
+            .listStyle(.plain)
+            .scrollDisabled(true)
+            .frame(height: CGFloat(tracks.count) * 80)
         }
     }
 
