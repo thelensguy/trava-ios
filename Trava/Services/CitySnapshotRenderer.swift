@@ -3,7 +3,7 @@
 //
 //  Renders a shareable 1080×1080 UIImage for a City in the app's
 //  city-outline card style — dark background, glowing OSM boundary,
-//  lava-colour track paths, and a stats overlay.
+//  lava-colour track paths, and a stats panel below the shape.
 //
 //  Pipeline:
 //    1. Fetch OSM boundary polygon via OSMService (with full fallback chain)
@@ -30,6 +30,7 @@ enum SnapshotError: LocalizedError {
 struct CitySnapshotRenderer {
 
     private static let canvasSize:  CGSize  = CGSize(width: 1080, height: 1080)
+    private static let statsHeight: CGFloat = 240   // bottom panel reserved for text
     private static let padding:     CGFloat = 80
     private static let leftMargin:  CGFloat = 60
 
@@ -82,9 +83,15 @@ struct CitySnapshotRenderer {
         city:     City,
         tracks:   [ExplorationTrack]
     ) -> UIImage {
-        let size    = Self.canvasSize
-        let padding = Self.padding
-        let lm      = Self.leftMargin
+        let size      = Self.canvasSize
+        let statsH    = Self.statsHeight
+        let padding   = Self.padding
+        let lm        = Self.leftMargin
+
+        // Shape occupies only the top portion; projection is computed within this zone
+        // so the boundary always fits without clipping into the stats panel.
+        let shapeH    = size.height - statsH               // 840 pt
+        let shapeSize = CGSize(width: size.width, height: shapeH)
 
         let format        = UIGraphicsImageRendererFormat()
         format.scale      = 1.0    // 1 pt = 1 px → exact 1080×1080 px output
@@ -98,11 +105,13 @@ struct CitySnapshotRenderer {
             c.fill(CGRect(origin: .zero, size: size))
 
             // ── 2. Project boundary [lon, lat] pairs → CGPoints ───────────
+            //    Projection is fitted to shapeSize so the boundary always
+            //    stays within the top 840 pt with 80 pt padding on all sides.
             let clCoords = boundary.compactMap { pair -> CLLocationCoordinate2D? in
                 guard pair.count >= 2 else { return nil }
                 return CLLocationCoordinate2D(latitude: pair[1], longitude: pair[0])
             }
-            let (boundaryPts, proj) = Self.project(clCoords, size: size, padding: padding)
+            let (boundaryPts, proj) = Self.project(clCoords, size: shapeSize, padding: padding)
             guard boundaryPts.count >= 3 else { return }
 
             // ── 3. Boundary closed path ───────────────────────────────────
@@ -161,9 +170,9 @@ struct CitySnapshotRenderer {
                     trackPts.dropFirst().forEach { trackPath.addLine(to: $0) }
 
                     let passes: [(width: CGFloat, hex: String, alpha: CGFloat)] = [
-                        (8, "FF4500", 0.25),   // outer glow
-                        (5, "FF6B35", 0.50),   // mid
-                        (2, "FFE4A0", 0.90),   // bright core
+                        (16, "FF4500", 0.35),   // outer glow
+                        (10, "FF6B35", 0.65),   // mid
+                        ( 4, "FFE4A0", 1.00),   // bright core
                     ]
                     for pass in passes {
                         c.saveGState()
@@ -180,41 +189,25 @@ struct CitySnapshotRenderer {
                 c.restoreGState()
             }
 
-            // ── 7. Bottom gradient (transparent → #0D0D0D at 85%) ─────────
-            let gradStartY: CGFloat = size.height - 350
-            let gradColors = [
-                UIColor(hex6: "0D0D0D").withAlphaComponent(0.00).cgColor,
-                UIColor(hex6: "0D0D0D").withAlphaComponent(0.85).cgColor,
-            ] as CFArray
-            if let gradient = CGGradient(
-                colorsSpace: CGColorSpaceCreateDeviceRGB(),
-                colors: gradColors,
-                locations: [0.0, 1.0]
-            ) {
-                c.drawLinearGradient(
-                    gradient,
-                    start: CGPoint(x: 0, y: gradStartY),
-                    end:   CGPoint(x: 0, y: size.height),
-                    options: []
-                )
-            }
+            // ── 7. Stats panel — solid bottom 240 pt ──────────────────────
+            let statsY = shapeH   // 840
+            c.setFillColor(UIColor(hex6: "0D0D0D").cgColor)
+            c.fill(CGRect(x: 0, y: statsY, width: size.width, height: statsH))
 
-            // ── 8. Stats overlay ──────────────────────────────────────────
-
-            // Country label — 32 pt, #adc6ff, tracked caps
-            let countryFont  = UIFont(name: "Inter-Medium", size: 32)
-                ?? .systemFont(ofSize: 32, weight: .medium)
+            // Country label — 28 pt, #adc6ff, tracked caps, y=860
+            let countryFont = UIFont(name: "Inter-Medium", size: 28)
+                ?? .systemFont(ofSize: 28, weight: .medium)
             let countryAttrs: [NSAttributedString.Key: Any] = [
                 .font:            countryFont,
                 .foregroundColor: glowColor,
                 .kern:            3.0,
             ]
             (city.country.uppercased() as NSString)
-                .draw(at: CGPoint(x: lm, y: 720), withAttributes: countryAttrs)
+                .draw(at: CGPoint(x: lm, y: 860), withAttributes: countryAttrs)
 
-            // City name — 96 pt bold, white, single line with tail truncation
-            let cityFont = UIFont(name: "PlusJakartaSans-Bold", size: 96)
-                ?? .boldSystemFont(ofSize: 96)
+            // City name — 72 pt bold, white, single line with tail truncation, y=900
+            let cityFont = UIFont(name: "PlusJakartaSans-Bold", size: 72)
+                ?? .boldSystemFont(ofSize: 72)
             let cityPS   = NSMutableParagraphStyle()
             cityPS.lineBreakMode = .byTruncatingTail
             let cityAttrs: [NSAttributedString.Key: Any] = [
@@ -222,12 +215,12 @@ struct CitySnapshotRenderer {
                 .foregroundColor: UIColor.white,
                 .paragraphStyle:  cityPS,
             ]
-            let cityRect = CGRect(x: lm, y: 760, width: size.width - lm * 2, height: 120)
+            let cityRect = CGRect(x: lm, y: 900, width: size.width - lm * 2, height: 90)
             (city.cityName as NSString).draw(in: cityRect, withAttributes: cityAttrs)
 
-            // Stats row — 28 pt, #adc6ff at 80 %, miles not km
-            let statsFont = UIFont(name: "Inter-Regular", size: 28)
-                ?? .systemFont(ofSize: 28)
+            // Stats row — 24 pt, #adc6ff at 70 %, miles, y=980
+            let statsFont = UIFont(name: "Inter-Regular", size: 24)
+                ?? .systemFont(ofSize: 24)
             let distMi    = city.totalDistanceKm * 0.621371
             let distStr   = distMi < 10
                 ? String(format: "%.1f mi", distMi)
@@ -237,22 +230,22 @@ struct CitySnapshotRenderer {
             let statsText = "\(distStr) · \(sessions) session\(sessions == 1 ? "" : "s") · \(coverage)% explored"
             let statsAttrs: [NSAttributedString.Key: Any] = [
                 .font:            statsFont,
-                .foregroundColor: glowColor.withAlphaComponent(0.80),
+                .foregroundColor: glowColor.withAlphaComponent(0.70),
             ]
-            (statsText as NSString).draw(at: CGPoint(x: lm, y: 880), withAttributes: statsAttrs)
+            (statsText as NSString).draw(at: CGPoint(x: lm, y: 980), withAttributes: statsAttrs)
 
-            // TRAVA wordmark — 36 pt, white at 45 %, right-aligned to x=980
-            let markFont = UIFont(name: "PlusJakartaSans-Bold", size: 36)
-                ?? .boldSystemFont(ofSize: 36)
+            // TRAVA wordmark — 28 pt, white at 40 %, right-aligned at x=1020, y=1050
+            let markFont = UIFont(name: "PlusJakartaSans-Bold", size: 28)
+                ?? .boldSystemFont(ofSize: 28)
             let markText = "TRAVA"
             let markAttrs: [NSAttributedString.Key: Any] = [
                 .font:            markFont,
-                .foregroundColor: UIColor.white.withAlphaComponent(0.45),
+                .foregroundColor: UIColor.white.withAlphaComponent(0.40),
                 .kern:            4.0,
             ]
             let markSize = (markText as NSString).size(withAttributes: markAttrs)
             (markText as NSString).draw(
-                at: CGPoint(x: 980 - markSize.width, y: 1020),
+                at: CGPoint(x: 1020 - markSize.width, y: 1050),
                 withAttributes: markAttrs
             )
         }
