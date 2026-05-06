@@ -23,6 +23,7 @@ import Foundation
 import CoreLocation
 import MapKit
 import Combine
+import OSLog
 
 // MARK: - Tracking Precision
 
@@ -105,6 +106,7 @@ final class LocationManager: NSObject, ObservableObject {
     // MARK: - Private state
 
     private let manager = CLLocationManager()
+    private let logger  = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.trava", category: "LocationManager")
 
     // Passive tracking
     private var isPassiveTracking = false
@@ -195,7 +197,9 @@ final class LocationManager: NSObject, ObservableObject {
 
         manager.desiredAccuracy                = kCLLocationAccuracyBest
         manager.distanceFilter                 = 8
-        manager.allowsBackgroundLocationUpdates = true
+        if Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") != nil {
+            manager.allowsBackgroundLocationUpdates = true
+        }
         manager.pausesLocationUpdatesAutomatically = false
         manager.startUpdatingLocation()
     }
@@ -282,7 +286,8 @@ final class LocationManager: NSObject, ObservableObject {
 
     /// Enables or disables background location updates.
     func setBackgroundTracking(_ enabled: Bool) {
-        manager.allowsBackgroundLocationUpdates = enabled
+        let canBackground = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") != nil
+        manager.allowsBackgroundLocationUpdates = enabled && canBackground
     }
 
     /// Pauses passive tracking (user toggle in settings).
@@ -366,7 +371,7 @@ extension LocationManager: CLLocationManagerDelegate {
                         let speedMS = dist / dt
                         if speedMS > Self.maxSpeedMS {
                             let speedKmH = speedMS * 3.6
-                            print("[LocationManager] Teleport detected: \(String(format: "%.0f", speedKmH)) km/h — starting fresh segment")
+                            logger.info("Teleport detected: \(String(format: "%.0f", speedKmH), privacy: .public) km/h — fresh segment")
                             lastAcceptedLocation = nil
                             closePassiveTrack()
                             continue
@@ -397,6 +402,6 @@ extension LocationManager: CLLocationManagerDelegate {
         _ manager: CLLocationManager,
         didFailWithError error: Error
     ) {
-        print("[LocationManager] \(error.localizedDescription)")
+        logger.error("\(error.localizedDescription, privacy: .public)")
     }
 }

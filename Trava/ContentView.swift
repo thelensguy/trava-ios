@@ -1,12 +1,16 @@
 //  ContentView.swift
 //  Trava
+//
+//  Root view — authentication gate and persistent tab shell.
+//
 
 import SwiftUI
 
 struct ContentView: View {
-    @EnvironmentObject var auth:        AuthViewModel
-    @EnvironmentObject var cityService:  CityService
-    @EnvironmentObject var trackService: TrackService
+    @EnvironmentObject var auth:            AuthViewModel
+    @EnvironmentObject var cityService:     CityService
+    @EnvironmentObject var trackService:    TrackService
+    @EnvironmentObject var locationManager: LocationManager
     @State private var selectedTab: AppTab = .exploration
     @State private var showCitiesImport = false
 
@@ -44,7 +48,10 @@ struct ContentView: View {
                 .allowsHitTesting(selectedTab == .settings)
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            DSNavBar(trailing: selectedTab == .dashboard ? AnyView(importButton) : AnyView(EmptyView()))
+            DSNavBar(
+                trailing: selectedTab == .dashboard ? AnyView(importButton) : AnyView(EmptyView()),
+                isPassiveTracking: !locationManager.isPassiveTrackingPaused
+            )
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             DSTabBar(selectedTab: $selectedTab)

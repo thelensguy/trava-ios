@@ -5,6 +5,7 @@
 //  The CoreData model is defined programmatically — no .xcdatamodeld file required.
 
 import CoreData
+import OSLog
 
 final class PersistenceController {
 
@@ -17,6 +18,7 @@ final class PersistenceController {
     static let didResetNotification = Notification.Name("PersistenceControllerDidReset")
 
     let container: NSPersistentContainer
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.trava", category: "PersistenceController")
 
     // MARK: - Init
 
@@ -152,7 +154,7 @@ final class PersistenceController {
             }
             container.viewContext.reset()
         } catch {
-            print("[CoreData] resetStore failed: \(error)")
+            logger.error("resetStore failed: \(error)")
         }
         NotificationCenter.default.post(name: Self.didResetNotification, object: nil)
     }
@@ -165,7 +167,7 @@ final class PersistenceController {
         do {
             try ctx.save()
         } catch {
-            print("[CoreData] Save error: \(error)")
+            logger.error("Save error: \(error)")
         }
     }
 }

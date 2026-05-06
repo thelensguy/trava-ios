@@ -1,5 +1,8 @@
 //  TravaApp.swift
 //  Trava
+//
+//  App entry point — environment object wiring and lifecycle hooks.
+//
 
 import SwiftUI
 import CoreLocation

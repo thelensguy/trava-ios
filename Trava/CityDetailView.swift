@@ -455,8 +455,6 @@ struct CityDetailView: View {
                 CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
             }
 
-            print("[CityDetail] loadData — city='\(name)' country='\(country)' coords=\(coords.count)")
-
             let boundary = await OSMService.shared.fetchCityBoundary(
                 cityName:           name,
                 country:            country,
@@ -464,26 +462,20 @@ struct CityDetailView: View {
                 administrativeArea: adminArea.isEmpty ? nil : adminArea,
                 coordinates:        centerCoord
             )
-            print("[CityDetail] boundary: \(boundary == nil ? "nil" : "\(boundary!.count) pts")")
 
             heroImage = await Task.detached(priority: .userInitiated) {
                 if let boundary {
-                    print("[CityDetail] rendering with boundary (\(boundary.count) pts)")
                     return CityCardRenderer.render(boundary: boundary, trackCoords: coords, size: size)
                 } else {
-                    print("[CityDetail] rendering placeholder for '\(name)'")
                     return CityCardRenderer.renderPlaceholder(cityName: name, size: size)
                 }
             }.value
-
-            print("[CityDetail] heroImage: \(heroImage == nil ? "nil — unexpected" : "set ✓")")
         }
 
         // Tracks for this city
         let userId = auth.currentUserId ?? UserProfile.guestUserId
         let all    = (try? await trackService.loadLocalTracks(userId: userId)) ?? []
         tracks     = all.filter { $0.cityName == city.cityName }
-        print("[CityDetail] tracks for '\(city.cityName)': \(tracks.count), distanceKm values: \(tracks.map { $0.distanceKm })")
     }
 
     private func renderAndShare() {

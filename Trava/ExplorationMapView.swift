@@ -221,6 +221,8 @@ struct ExplorationMapView: View {
     @State private var recordingStartTime: Date?
     @State private var hascenteredOnUser = false
     @State private var searchToast: String?
+    @State private var focusedSessionSeconds: Int = 0
+    @State private var recordPillPulse: CGFloat = 1.0
 
     /// Pre-built coordinate arrays for the heatmap overlay.
     /// Rebuilt on every refreshTracks() call so the heatmap always reflects
@@ -295,7 +297,7 @@ struct ExplorationMapView: View {
                     Spacer()
                     floatingMapControls
                         .padding(.trailing, 20)
-                        .padding(.bottom, 116)  // above recording button area
+                        .padding(.bottom, 84)
                 }
             }
 
@@ -326,9 +328,10 @@ struct ExplorationMapView: View {
         .onReceive(NotificationCenter.default.publisher(
             for: PersistenceController.didResetNotification)
         ) { _ in
-            isRecording        = false
-            recordingStartTime = nil
-            allTracks          = []
+            isRecording           = false
+            recordingStartTime    = nil
+            allTracks             = []
+            focusedSessionSeconds = 0
         }
         // Reload whenever user identity resolves (async Firebase auth catch-up).
         .onChange(of: auth.currentUserId) { _, userId in
@@ -372,6 +375,22 @@ struct ExplorationMapView: View {
         // so the heatmap and polylines are immediately removed from the map.
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("AppDataCleared"))) { _ in
             refreshTracks()
+        }
+        // 1-second tick for the focused session timer.
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            if isRecording { focusedSessionSeconds += 1 }
+        }
+        // Pulse the record pill while recording.
+        .onChange(of: isRecording) { _, recording in
+            if recording {
+                withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
+                    recordPillPulse = 1.05
+                }
+            } else {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    recordPillPulse = 1.0
+                }
+            }
         }
     }
 
@@ -462,10 +481,7 @@ struct ExplorationMapView: View {
     // MARK: - Bottom Section
 
     private var bottomSection: some View {
-        VStack(spacing: 16) {
-            focusCardContainer
-            mapActions
-        }
+        focusCardContainer
     }
 
     // MARK: - Focus Card (collapsible)
@@ -587,59 +603,83 @@ struct ExplorationMapView: View {
         }
     }
 
-    // MARK: - Recording Button (full-width, gradient)
+    // MARK: - Floating Record Pill
 
-    private var mapActions: some View {
+    private var recordPill: some View {
         Button {
             Task { await toggleRecording() }
         } label: {
             HStack(spacing: 8) {
                 if isRecording {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.white)
+                    Text("● \(timerString)")
+                        .font(.custom("Inter-Medium", size: 13))
+                        .foregroundColor(.white)
+                } else {
                     Circle()
-                        .fill(.white)
-                        .frame(width: 8, height: 8)
+                        .fill(Color(hex: "#FF4500"))
+                        .frame(width: 10, height: 10)
+                    Text("Record")
+                        .font(.custom("Inter-Medium", size: 13))
+                        .foregroundColor(.white)
                 }
-                Text(isRecording ? "Stop Recording" : "Start Exploration")
-                    .font(.custom("PlusJakartaSans-Bold", size: 12))
-                    .foregroundColor(
-                        isRecording ? Color(hex: "#68000b") : Color(hex: "#002e69")
-                    )
-                    .kerning(1.2)
-                    .textCase(.uppercase)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
+            .padding(.horizontal, 16)
+            .frame(height: 44)
             .background(
-                isRecording
-                    ? AnyShapeStyle(Color.dsSecondary.opacity(0.9))
-                    : AnyShapeStyle(LinearGradient.primaryCTA)
+                ZStack {
+                    Capsule().fill(.ultraThinMaterial)
+                    Capsule().fill(
+                        isRecording
+                            ? Color(hex: "#FF4500").opacity(0.9)
+                            : Color.dsSurfaceContainerHigh.opacity(0.9)
+                    )
+                }
             )
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .shadow(
-                color: (isRecording ? Color.dsSecondary : Color.dsPrimary).opacity(0.35),
-                radius: 16, x: 0, y: 4
+            .overlay(
+                Capsule()
+                    .stroke(Color.white.opacity(isRecording ? 0 : 0.15), lineWidth: 1)
             )
-            .animation(.easeInOut(duration: 0.2), value: isRecording)
+            .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 2)
+            .scaleEffect(isRecording ? recordPillPulse : 1.0)
         }
     }
 
-    // MARK: - Floating Map Control Pills (bottom-right, icon-only 44×44)
+    private var timerString: String {
+        let total   = focusedSessionSeconds
+        let hours   = total / 3600
+        let minutes = (total % 3600) / 60
+        let seconds = total % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            return String(format: "%02d:%02d", minutes, seconds)
+        }
+    }
+
+    // MARK: - Floating Map Control Pills (bottom-right)
 
     private var floatingMapControls: some View {
-        VStack(spacing: 8) {
-            // LOCATE — centers on current GPS
-            floatPill(icon: "location.fill", active: false) {
-                if let loc = locationManager.currentLocation {
-                    region = MKCoordinateRegion(
-                        center: loc.coordinate,
-                        span:   MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-                    )
-                }
-            }
+        VStack(spacing: 16) {
+            recordPill
 
-            // PATHS / HEATMAP toggle
-            floatPill(icon: showHeatmap ? "map" : "flame", active: showHeatmap) {
-                showHeatmap.toggle()
+            VStack(spacing: 8) {
+                // LOCATE — centers on current GPS
+                floatPill(icon: "location.fill", active: false) {
+                    if let loc = locationManager.currentLocation {
+                        region = MKCoordinateRegion(
+                            center: loc.coordinate,
+                            span:   MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+                        )
+                    }
+                }
+
+                // PATHS / HEATMAP toggle
+                floatPill(icon: showHeatmap ? "map" : "flame", active: showHeatmap) {
+                    showHeatmap.toggle()
+                }
             }
         }
     }
@@ -682,7 +722,8 @@ struct ExplorationMapView: View {
                 distanceKm:  ExplorationTrack.distance(from: locations),
                 cityName:    city
             )
-            recordingStartTime = nil
+            recordingStartTime    = nil
+            focusedSessionSeconds = 0
 
             try? await trackService.saveTrackLocally(track)
             trackService.localTracks.append(track)
@@ -709,7 +750,8 @@ struct ExplorationMapView: View {
         } else {
             // ── Start ──
             locationManager.requestPermissions()
-            recordingStartTime = Date()
+            recordingStartTime    = Date()
+            focusedSessionSeconds = 0
             locationManager.startForegroundTracking()
             isRecording = true
         }

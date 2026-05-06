@@ -293,6 +293,9 @@ struct DSTabBar: View {
 
 struct DSNavBar: View {
     var trailing: AnyView = AnyView(EmptyView())
+    var isPassiveTracking: Bool = false
+
+    @State private var dotPulse: Double = 1.0
 
     var body: some View {
         HStack(spacing: 0) {
@@ -300,11 +303,29 @@ struct DSNavBar: View {
             Color.clear
                 .frame(width: 40, height: 40)
 
-            Text("TRAVA")
-                .font(.custom("PlusJakartaSans-ExtraBold", size: 18))
-                .foregroundColor(Color.dsPrimary)
-                .kerning(1.8)
-                .frame(maxWidth: .infinity)
+            HStack(spacing: 8) {
+                if isPassiveTracking {
+                    Circle()
+                        .fill(Color(hex: "#34C759"))
+                        .frame(width: 6, height: 6)
+                        .opacity(dotPulse)
+                        .accessibilityLabel("Passive tracking active")
+                        .onAppear {
+                            withAnimation(
+                                .easeInOut(duration: 1.5).repeatForever(autoreverses: true)
+                            ) {
+                                dotPulse = 0.4
+                            }
+                        }
+                        .onDisappear { dotPulse = 1.0 }
+                }
+
+                Text("TRAVA")
+                    .font(.custom("PlusJakartaSans-ExtraBold", size: 18))
+                    .foregroundColor(Color.dsPrimary)
+                    .kerning(1.8)
+            }
+            .frame(maxWidth: .infinity)
 
             trailing
                 .frame(width: 40, height: 40)

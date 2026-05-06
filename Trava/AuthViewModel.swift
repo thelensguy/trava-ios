@@ -18,8 +18,6 @@
 
 import SwiftUI
 import Combine
-// import AuthenticationServices  // Re-enable with Sign in with Apple (paid account)
-// import CryptoKit               // Re-enable with Sign in with Apple
 import FirebaseCore
 import FirebaseAuth
 

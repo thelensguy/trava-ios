@@ -14,6 +14,7 @@ import CoreData
 import CoreLocation
 import Foundation
 import MapKit
+import OSLog
 import FirebaseFirestore
 
 @MainActor
@@ -26,6 +27,7 @@ final class TrackService: ObservableObject {
     private let persistence = PersistenceController.shared
     private let db          = Firestore.firestore()
     private var resetObserver: NSObjectProtocol?
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.trava", category: "TrackService")
 
     init() {
         resetObserver = NotificationCenter.default.addObserver(
@@ -43,14 +45,12 @@ final class TrackService: ObservableObject {
     // MARK: - Save locally (CoreData, offline-safe)
 
     func saveTrackLocally(_ track: ExplorationTrack) async throws {
-        print("[TrackService] saving: city='\(track.cityName)' distanceKm=\(track.distanceKm) coords=\(track.coordinates.count)")
         let context = persistence.container.newBackgroundContext()
         try await context.perform {
             let entity = TrackEntity(context: context)
             entity.configure(from: track, in: context)
             try context.save()
         }
-        print("[TrackService] saved to CoreData ✓")
     }
 
     // MARK: - Load local tracks for a user
@@ -121,12 +121,12 @@ final class TrackService: ObservableObject {
                         }
                     }
                 } catch {
-                    print("[TrackService] Upload failed for \(track.trackId): \(error)")
+                    logger.error("Upload failed for \(track.trackId, privacy: .public): \(error)")
                     // Leave isSynced = false so it retries next time.
                 }
             }
         } catch {
-            print("[TrackService] Sync error: \(error)")
+            logger.error("Sync error: \(error)")
         }
     }
 

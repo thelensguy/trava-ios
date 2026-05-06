@@ -25,6 +25,7 @@ import CoreData
 import CoreLocation
 import MapKit
 import Combine
+import OSLog
 import FirebaseFirestore
 
 // MARK: - CityService
@@ -36,6 +37,7 @@ final class CityService: ObservableObject {
 
     private let persistence = PersistenceController.shared
     private let db          = Firestore.firestore()
+    private let logger      = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.trava", category: "CityService")
 
     // ── Serial write infrastructure ──────────────────────────────────────────
 
@@ -279,7 +281,7 @@ final class CityService: ObservableObject {
                             // returned nothing — this can happen transiently.
                             // Treat it as a no-op and return a placeholder so
                             // callers don't crash.  The next save will land correctly.
-                            print("[CityService] Cache/CoreData mismatch for \(cityName) — skipping")
+                            logger.warning("Cache/CoreData mismatch for \(cityName, privacy: .public) — skipping")
                             result = City(
                                 userId: userId, cityName: cityName, country: country,
                                 coordinates: [], totalDistanceKm: 0, totalSessions: 0,
@@ -329,7 +331,7 @@ final class CityService: ObservableObject {
                     }
                 }
             } catch {
-                print("[CityService] Firestore sync failed for \(cityName): \(error)")
+                logger.error("Firestore sync failed for \(cityName, privacy: .public): \(error)")
             }
         }
 
