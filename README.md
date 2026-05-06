@@ -1,109 +1,82 @@
 ![Platform](https://img.shields.io/badge/Platform-iOS%2017+-007AFF?style=flat-square)
 ![Language](https://img.shields.io/badge/Language-Swift-FA7343?style=flat-square)
 ![Status](https://img.shields.io/badge/Status-In%20Development-green?style=flat-square)
+![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)
 
 # Trava
 
-**Trava is an iOS app that passively tracks your exploration and visualizes your movement patterns as beautiful city maps.** Remember every city you've explored with boundary silhouettes drawn from real map data, detailed stats, and shareable cards — all without ever pressing record.
-
-> Personal portfolio project. Built with Swift and [Claude Code](https://claude.ai/code).
+Trava is an iOS app that tracks everywhere you walk and turns your movement into a living map. Every street you cover gets recorded — building a personal record of your exploration city by city. Unlike fitness apps that focus on pace and calories, Trava focuses on *coverage*: how much of a city have you actually seen?
 
 ---
 
 ## Features
 
-- **Passive GPS tracking** — runs silently in the background, no buttons required
-- **Heatmap visualization** — glowing paths show where you go most, built with a custom CoreGraphics renderer
-- **City auto-detection** — identifies which city you're in from your GPS coordinates and fetches its real boundary from OpenStreetMap
-- **City boundary silhouettes** — crisp outlines of every city you've explored, rendered as shareable cards
-- **Coverage tracking** — grid-cell algorithm calculates what percentage of a city you've actually walked
-- **Import from anywhere** — bring in routes from Apple Health, Garmin, Strava, or any GPX file
-- **Granular tracking controls** — choose GPS precision (Battery Saver / Balanced / Precise), toggle background mode, pause anytime
-- **Offline-first** — all data lives on device in CoreData; Firebase syncs when you're signed in
-- **Guest mode** — full functionality with no account required
+### Tracking
+- **Passive GPS tracking** — runs silently in the background using always-on location; no buttons to press
+- **Focused session recording** — tap Record to switch to high-precision mode for deliberate walks or runs
+- **Configurable precision levels** — Battery Saver (100m, 50m filter), Balanced (10m, 20m filter), or Precise (best accuracy, 5m filter)
 
----
+### Visualization
+- **Custom heatmap renderer** — a CoreGraphics overlay that blends visit-count data into a color gradient directly on the MapKit canvas, with no third-party library
+- **City boundary silhouettes** — crisp city outlines fetched from OpenStreetMap and rendered as shareable cards
+- **Coverage tracking** — a grid-cell algorithm that measures what percentage of a city's area you've actually walked
 
-## Screenshots
+### Data
+- **Offline-first architecture** — all tracks and city data are persisted in CoreData; the app works fully without a network connection
+- **Firebase cloud sync** — Firestore backs up and syncs data across devices when signed in
+- **Flexible import** — bring in past routes from Apple Health workouts or any GPX file (Strava, Garmin, AllTrails, Komoot)
 
-<table>
-  <tr>
-    <td align="center" width="33%">
-      <img src="screenshots/map-heatmap.png" width="220" alt="Map with heatmap"/>
-      <br/>
-      <sub><b>Map & Heatmap</b><br/>Glowing paths show exploration density. The active region card shows total distance and track count. Green dot confirms passive tracking is live.</sub>
-    </td>
-    <td align="center" width="33%">
-      <img src="screenshots/map-satellite.png" width="220" alt="Satellite map with record pill"/>
-      <br/>
-      <sub><b>Satellite View</b><br/>Switch between Standard, Satellite, and Hybrid map styles. Tap <b>Record</b> to start a focused high-precision session on top of passive tracking.</sub>
-    </td>
-    <td align="center" width="33%">
-      <img src="screenshots/cities-list.png" width="220" alt="Cities dashboard"/>
-      <br/>
-      <sub><b>Cities Dashboard</b><br/>Browse all explored cities with OSM boundary thumbnails. 20 cities, 614 mi, 474 tracks — all auto-detected without manual tagging.</sub>
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="33%">
-      <img src="screenshots/city-detail.png" width="220" alt="City detail — Los Altos"/>
-      <br/>
-      <sub><b>City Detail</b><br/>Deep dive into a city with its boundary silhouette, distance, sessions, and coverage percentage. Share a snapshot directly to social media.</sub>
-    </td>
-    <td align="center" width="33%">
-      <img src="screenshots/settings-tracking.png" width="220" alt="Tracking settings"/>
-      <br/>
-      <sub><b>Tracking Settings</b><br/>Fine-tune GPS precision, toggle background tracking, pause all location updates, and switch between km and miles.</sub>
-    </td>
-    <td align="center" width="33%">
-      <img src="screenshots/import-tracks.png" width="220" alt="Import tracks"/>
-      <br/>
-      <sub><b>Import Tracks</b><br/>Pull in workouts from Apple Health by date range, or import .gpx files from Garmin, Strava, AllTrails, and more.</sub>
-    </td>
-  </tr>
-</table>
+### Control
+- **Granular tracking settings** — adjust GPS precision, toggle background mode, and pause all location updates independently
+- **Guest mode** — the full app works without creating an account; data stays on-device only
 
 ---
 
 ## Tech Stack
 
-| Technology | Role |
+| Layer | Technologies |
 |---|---|
-| **Swift / SwiftUI** | Primary language and UI framework |
-| **CoreData** | Offline-first local persistence for tracks and cities |
-| **CoreLocation** | Passive background tracking + active recording sessions |
-| **MapKit** | Interactive map, polyline overlays, reverse geocoding |
-| **Firebase Auth** | Google Sign-In and anonymous guest sessions |
-| **Firebase Firestore** | Cloud backup and cross-device sync |
-| **HealthKit** | Import workout routes from Apple Health |
-| **OpenStreetMap / Nominatim** | City boundary polygon data for silhouette cards |
+| Language & UI | Swift, SwiftUI |
+| Maps | MapKit, CoreLocation |
+| Persistence | CoreData, Firebase Firestore |
+| Auth | Firebase Auth |
+| Health | HealthKit |
+| Geocoding | OpenStreetMap / Nominatim |
 
 ---
 
-## Architecture Highlights
+## Architecture
 
-- **Offline-first data layer** — CoreData is the source of truth; Firestore syncs in the background when the user is signed in
-- **Always-on passive tracking + focused sessions** — passive mode uses coarse GPS (10m accuracy, 20m filter) to preserve battery; tapping Record switches to best-accuracy mode, then restores passive on stop
-- **Custom heatmap renderer** — CoreGraphics draws heat tiles directly onto a `MKOverlayRenderer`, blending pass counts into a color gradient without a third-party library
-- **Multi-city track splitting** — a single GPS track spanning multiple cities is split by sampling coordinates against boundary polygons and attributed to each city independently
-- **Grid-cell coverage algorithm** — divides a city's bounding box into ~50m cells, marks cells that contain a recorded GPS point as visited, then computes the ratio against the city polygon area
-- **Negative cache for boundary lookups** — failed Nominatim responses are cached for 7 days to avoid hammering the API on repeated lookups for unsupported place names
-- **Speed-based teleport filter** — points implying movement faster than 150 km/h are rejected and trigger a passive track segment close, eliminating GPS jumps from poor signal
+**Offline-first data layer.** CoreData is the single source of truth for all tracks and city records. Firestore acts as a sync layer, not a primary store — writes go to CoreData first and propagate to the cloud in the background. This means the app is fully functional with no internet connection, and there is no loading state on first launch.
+
+**Dual tracking modes with clean handoff.** The app runs two distinct GPS configurations. Passive mode uses `kCLLocationAccuracyNearestTenMeters` with a 20-meter distance filter, background location updates, and automatic pause detection — optimized to run indefinitely with minimal battery impact. When the user starts a focused session, the manager closes the current passive track, reconfigures to `kCLLocationAccuracyBest` with an 8-meter filter, and disables automatic pausing. On stop, the inverse handoff restores passive settings and resumes the background accumulator.
+
+**Custom heatmap rendering.** The heatmap is a native `MKOverlayRenderer` subclass that draws directly into a CoreGraphics context. GPS points are binned into a grid, normalized by visit count, and painted using a hand-tuned color ramp from cool blue through orange to white. Rendering runs on the map's tile draw cycle with no off-screen buffers or external dependencies.
+
+**Multi-city track splitting.** A single GPS session can pass through multiple cities. When saving a track, the service samples coordinates against the bounding polygons of candidate cities and splits the track at boundary crossings, attributing each segment to the correct city. This lets a commute or road trip populate multiple city cards from a single recording.
+
+**Grid-cell coverage algorithm.** City coverage is calculated by dividing the city's bounding box into a uniform grid of approximately 50-meter cells. Each cell that contains at least one recorded GPS point within the city polygon is marked visited. Coverage is the ratio of visited cells to total cells that fall inside the polygon. This approach is stable against GPS density variations and scales correctly across cities of any size.
+
+---
+
+## Why I Built This
+
+I wanted a way to track the places I actually visit on foot — not workouts, but exploration. Every fitness app I tried was optimized for segments and pace; none of them told me anything about *where* I'd been relative to where I could go. I also wanted a project that would touch the full iOS stack: real-time location, custom rendering, offline persistence, cloud sync, and health data — things that rarely appear together in sample code.
+
+Trava is the result of that itch. It's a product I use daily and a codebase I care about keeping clean. The technical constraints — battery-efficient always-on tracking, GPS noise rejection, multi-city attribution — turned out to be genuinely interesting engineering problems, and solving them properly was the point.
 
 ---
 
 ## Roadmap
 
-- Neighborhood-level exploration tracking
-- Social features — friends, shared maps, leaderboards
-- Challenges and exploration goals
-- Web dashboard
-- Pro tier via StoreKit
+- Neighborhood-level granularity within cities
+- Social layer — friends, shared exploration maps
+- Exploration challenges and personal goals
+- Web dashboard for larger-screen viewing
+- Pro tier with extended history and export options
 
 ---
 
-## Status
+## License
 
-In active development. Personal portfolio project — not open source.
-
-*Built with [Claude Code](https://claude.ai/code) + [Google Stitch](https://stitch.withgoogle.com)*
+Licensed under MIT — see the [LICENSE](LICENSE) file.
