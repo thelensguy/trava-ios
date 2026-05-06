@@ -32,6 +32,59 @@ Trava is an iOS app that tracks everywhere you walk and turns your movement into
 
 ---
 
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <img src="screenshots/map-heatmap.png" width="220" alt="Map with heatmap and active region card"/>
+      <br/><br/>
+      <b>Map & Active Region</b>
+      <br/>
+      <sub>The live map shows all recorded tracks as glowing paths. The active region card displays current city, total distance, and track count. The green dot in the nav bar confirms passive tracking is running.</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="screenshots/map-satellite.png" width="220" alt="Satellite map with record pill"/>
+      <br/><br/>
+      <b>Satellite View + Record</b>
+      <br/>
+      <sub>Switch between Standard, Satellite, and Hybrid map styles. The floating Record pill starts a high-precision focused session. Location and heatmap controls sit below it. Time filters let you view tracks from the last 7 days, 30 days, or all time.</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="screenshots/cities-list.png" width="220" alt="Cities dashboard"/>
+      <br/><br/>
+      <b>Cities Dashboard</b>
+      <br/>
+      <sub>Every city you've visited appears automatically — no manual tagging. Each card shows a boundary silhouette thumbnail drawn from OpenStreetMap data, with session count and total distance. Global stats sit at the top.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <img src="screenshots/city-detail.png" width="220" alt="City detail — Los Altos"/>
+      <br/><br/>
+      <b>City Detail</b>
+      <br/>
+      <sub>Full-screen city view with a large boundary silhouette, distance, session count, and coverage percentage. The Share button exports a polished snapshot card. All sessions for that city are listed below.</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="screenshots/settings-tracking.png" width="220" alt="Tracking settings"/>
+      <br/><br/>
+      <b>Tracking Settings</b>
+      <br/>
+      <sub>Three GPS precision tiers (Saver / Balanced / Precise), a background tracking toggle, and a pause switch that suspends all location updates without losing your session. Distance unit switches between km and miles globally.</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="screenshots/import-tracks.png" width="220" alt="Import tracks"/>
+      <br/><br/>
+      <b>Import Tracks</b>
+      <br/>
+      <sub>Pull in Apple Health walking and running workouts by date range, or import any .gpx file from Garmin, Strava, AllTrails, Komoot, or similar. Imported tracks are processed through the same city-detection and coverage pipeline as live recordings.</sub>
+    </td>
+  </tr>
+</table>
+
+---
+
 ## Tech Stack
 
 | Layer | Technologies |
